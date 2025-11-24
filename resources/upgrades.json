@@ -1,0 +1,65 @@
+[
+  {
+    "id": "slime_wall",
+    "name": "Slime Wall",
+    "description": "Hold down to transform into a towering slime wall that reflects enemy projectiles with a sticky trail.",
+    "type": "ability",
+    "cost": 0,
+    "unlocks": {
+      "wallMode": true
+    }
+  },
+  {
+    "id": "slime_fling",
+    "name": "Fling Burst",
+    "description": "Masterful momentum lets you fling bouncing slime globs that leave trails wherever they travel.",
+    "type": "ability",
+    "cost": 0,
+    "unlocks": {
+      "fling": true
+    }
+  },
+  {
+    "id": "purple_health",
+    "name": "Amethyst Core",
+    "description": "Unlock the purple health passive that boosts damage output as your HP rises.",
+    "type": "passive",
+    "cost": 0,
+    "unlocks": {
+      "purpleHealth": true
+    }
+  },
+  {
+    "id": "regen",
+    "name": "Renewal Bloom",
+    "description": "Spend vital essence to regenerate back to 10 HP when you dip below it.",
+    "type": "shop",
+    "cost": {
+      "hp": 20
+    },
+    "unlocks": {
+      "regen": true
+    }
+  },
+  {
+    "id": "melt_platforms",
+    "name": "Corrosive Secrets",
+    "description": "Enable platform melting, letting slime trails corrode supports when toggled on.",
+    "type": "ability",
+    "cost": 0,
+    "unlocks": {
+      "meltPlatforms": true
+    }
+  },
+  {
+    "id": "magnet",
+    "name": "Graviton Maw",
+    "description": "Gain a magnetic aura that draws coins and chunks from two platforms away.",
+    "type": "passive",
+    "cost": 0,
+    "unlocks": {
+      "magnet": true,
+      "magnetRange": 96
+    }
+  }
+]

@@ -1,0 +1,52 @@
+export const UPGRADES = [
+  {
+    id: 'slime_wall',
+    title: 'Bulwark Bloom',
+    desc: 'Hold down to transform into a slime wall that reflects projectiles.',
+    artClass: 'tile-art--regen',
+    cost: { coins: 90 },
+  },
+  {
+    id: 'slime_fling',
+    title: 'Fling Burst',
+    desc: 'Harness momentum to fling bouncing slime globs that drip corrosive trails.',
+    artClass: 'tile-art--coins',
+    cost: { coins: 110 },
+  },
+  {
+    id: 'regen',
+    title: 'Renewal Bloom',
+    desc: 'Sacrifice 20 HP to auto-heal back to 10 whenever you dip below it.',
+    artClass: 'tile-art--regen',
+    cost: { hp: 20 },
+  },
+  {
+    id: 'melt_platforms',
+    title: 'Corrosive Secrets',
+    desc: 'Enable platform melting so every trail devours support.',
+    artClass: 'tile-art--maxhp',
+    cost: { coins: 130 },
+  },
+  {
+    id: 'magnet',
+    title: 'Graviton Maw',
+    desc: 'Gain a magnetic aura that pulls chunks and coins from two platforms away.',
+    artClass: 'tile-art--coins',
+    cost: { coins: 150 },
+    magnetRange: 96,
+  },
+  {
+    id: 'spiked_shoes',
+    title: 'Spiked Shoes',
+    desc: 'Bounce on enemy heads, taking no damage while dealing 2 damage per stomp.',
+    artClass: 'tile-art--regen',
+    cost: { coins: 120 },
+  },
+  {
+    id: 'royal_slime',
+    title: 'Royal Slime',
+    desc: 'Ascend beyond 30 HP up to 40, empowering slime size and damage.',
+    artClass: 'tile-art--maxhp',
+    cost: { coins: 160 },
+  },
+];
