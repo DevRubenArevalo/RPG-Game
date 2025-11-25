@@ -55,6 +55,7 @@ export class Player {
     this.flingDirection = overrides.flingDirection ?? 1;
     this.wallMode = overrides.wallMode ?? false;
     this.dropThroughTimer = overrides.dropThroughTimer ?? 0;
+    this.duckInputPrev = overrides.duckInputPrev ?? false;
   }
 
   applyScale(world) {
@@ -85,6 +86,8 @@ export function updatePlayerMovement(player, dt, input, world, {
   allowFling = false,
 }) {
   const { left, right, jump, duck, swallow } = input;
+  const duckJustPressed = duck && !player.duckInputPrev;
+  player.duckInputPrev = duck;
   if (duck && swallow) {
     if (!player.swallowHeld && swallowShield) {
       swallowShield();
@@ -117,9 +120,14 @@ export function updatePlayerMovement(player, dt, input, world, {
   player.prevX = player.x;
   player.prevY = player.y;
 
-  const wallActive = allowWallMode && duck;
+  player.dropThroughTimer = Math.max(0, (player.dropThroughTimer || 0) - dt);
+  if (duckJustPressed && player.grounded) {
+    player.dropThroughTimer = 0.1;
+  }
+  const dropActive = player.dropThroughTimer > 0;
+  const wallActive = allowWallMode && duck && player.grounded && !dropActive;
   player.wallMode = wallActive;
-  player.ducking = wallActive && player.grounded;
+  player.ducking = duck && player.grounded;
   const prevBottom = player.y + player.h;
   const prevCenter = player.x + player.w / 2;
   const normalScale = 0.45 + (player.health / player.maxHealth) * 0.75;
@@ -136,11 +144,6 @@ export function updatePlayerMovement(player, dt, input, world, {
   }
   if (player.x < 0) player.x = 0;
   if (player.x + player.w > world.width) player.x = world.width - player.w;
-
-  player.dropThroughTimer = Math.max(0, (player.dropThroughTimer || 0) - dt);
-  if (!wallActive && duck && player.grounded) {
-    player.dropThroughTimer = 0.2;
-  }
 
   if (!wallActive) {
     if (left && !right) {

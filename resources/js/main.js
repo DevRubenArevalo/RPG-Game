@@ -6,7 +6,59 @@ import { ENEMY_CONFIG, createEnemy, updateEnemies } from './enemy.js';
 import { PLAYER_CONFIG, updatePlayerMovement } from './player.js';
 import { UPGRADES } from './upgrades.js';
 
+const BASE_ABILITIES = [
+  {
+    id: 'acid_trail',
+    title: 'Acid Trail',
+    desc: 'Moving leaves a damaging trail that stacks damage.',
+  },
+  {
+    id: 'swallow_shield',
+    title: 'Swallow Shield',
+    desc: 'Duck + F to spend 10 HP for a one-hit shield.',
+  },
+];
+const HOME_INFO = {
+  howto: {
+    title: 'How to Play',
+    body: `<p>Master the basics before you ooze out:</p>
+      <ul>
+        <li><strong>Move</strong>: A/D or ← →</li>
+        <li><strong>Jump</strong>: Space, W, or ↑</li>
+        <li><strong>Duck</strong>: S or ↓ to slip through platforms</li>
+        <li><strong>Trail</strong>: Your slime burns foes—kite them through it!</li>
+      </ul>`,
+  },
+  options: {
+    title: 'Options',
+    body: `<p>Quick tweaks before diving in:</p>
+      <ul>
+        <li>Use the <strong>Mute Audio</strong> button to silence SFX/music.</li>
+        <li><strong>Debug keys</strong>: G toggles god mode, H grants coins, J opens the shop.</li>
+        <li>Visit shops every 5,000 distance to buy upgrades or reroll.</li>
+      </ul>`,
+  },
+  credits: {
+    title: 'Credits',
+    body: `<p>From Nothing: A Slime's Journey</p>
+      <ul>
+        <li><strong>Design & Code</strong>: Ruben Arevalo</li>
+        <li><strong>Music & SFX</strong>: Ruben Arevalo</li>
+        <li><strong>Special Thanks</strong>: Mackenzie O'Brien and the brave slime scouts who paved the way</li>
+      </ul>`,
+  },
+};
+
 const muteToggle = document.getElementById('muteToggle');
+const abilityListEl = document.getElementById('abilityList');
+const homeInfoEl = document.getElementById('homeInfo');
+const homeStartButton = document.getElementById('homeStart');
+const homeOptionsButton = document.getElementById('homeOptions');
+const homeCreditsButton = document.getElementById('homeCredits');
+const homeScreenEl = document.getElementById('homeScreen');
+const gameOverControls = document.getElementById('gameOverControls');
+const gameOverYesButton = document.getElementById('gameOverYes');
+const gameOverNoButton = document.getElementById('gameOverNo');
 const state = new GameState(CONSTANTS);
 state.upgrades = {};
 state.purchasedUpgrades = new Set();
@@ -17,6 +69,14 @@ state.magnetRange = 0;
 state.godMode = false;
 state.currentShopOptions = [];
 resetUpgradeFlags();
+updateHomeInfoContent();
+updateAbilityList();
+state.homeScreenActive = true;
+setHomeScreenVisible(true);
+state.gameOverTears = [];
+state.gameOverTearTimer = 0;
+state.gameOverNextTearSide = 'left';
+setGameOverControlsVisible(false);
 const audio = new AudioManager(AUDIO_TRACKS, muteToggle);
 const shopManager = new ShopManager();
 const pauseOverlay = document.getElementById('pauseOverlay');
@@ -78,10 +138,13 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  const isRefreshKey = e.key === 'F5';
   const key = e.key.toLowerCase();
   if (state.gameOver) {
-    handleGameOverKey(key);
-    e.preventDefault();
+    if (!isRefreshKey) {
+      handleGameOverKey(key);
+      e.preventDefault();
+    }
     return;
   }
   if (key === 'g') {
@@ -99,6 +162,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (state.paused) {
+    if (isRefreshKey) return;
     e.preventDefault();
     return;
   }
@@ -111,6 +175,39 @@ window.addEventListener('keydown', (e) => {
 shopRefreshButton?.addEventListener('click', () => {
   if (!state.shopActive) return;
   refreshShopOptions();
+});
+homeOptionsButton?.addEventListener('click', () => {
+  updateHomeInfoContent('options');
+});
+homeCreditsButton?.addEventListener('click', () => {
+  updateHomeInfoContent('credits');
+});
+homeStartButton?.addEventListener('click', () => {
+  updateHomeInfoContent('howto');
+  if (!state.homeScreenActive) return;
+  state.homeScreenActive = false;
+  setHomeScreenVisible(false);
+  audio.stopLoop?.('home');
+  audio.startMusic?.();
+});
+gameOverYesButton?.addEventListener('click', () => {
+  if (!state.gameOver) return;
+  stopGameOverSound();
+  resetGame();
+  lastTime = performance.now();
+  loop(lastTime);
+});
+gameOverNoButton?.addEventListener('click', () => {
+  if (!state.gameOver) return;
+  resetGame(true);
+});
+homeStartButton?.addEventListener('click', () => {
+  updateHomeInfoContent('howto');
+  if (!state.homeScreenActive) return;
+  state.homeScreenActive = false;
+  setHomeScreenVisible(false);
+  audio.stopLoop('home');
+  audio.startMusic();
 });
 window.addEventListener('keyup', (e) => {
   if (state.gameOver || state.paused) return;
@@ -140,6 +237,34 @@ pauseRetry.addEventListener('click', () => {
 function setPauseOverlay(visible) {
   if (!pauseOverlay) return;
   pauseOverlay.classList.toggle('visible', visible);
+  pauseOverlay.classList.toggle('hidden', !visible);
+}
+
+function updateHomeInfoContent(section = 'howto') {
+  if (!homeInfoEl) return;
+  const info = HOME_INFO[section] || HOME_INFO.howto;
+  homeInfoEl.innerHTML = `<h3>${info.title}</h3>${info.body}`;
+}
+
+function updateAbilityList() {
+  if (!abilityListEl) return;
+  abilityListEl.innerHTML = '';
+  BASE_ABILITIES.forEach((entry) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${entry.title}</strong><small>${entry.desc}</small>`;
+    abilityListEl.appendChild(li);
+  });
+}
+
+function setHomeScreenVisible(visible) {
+  if (!homeScreenEl) return;
+  homeScreenEl.classList.toggle('hidden', !visible);
+}
+
+function setGameOverControlsVisible(visible) {
+  if (!gameOverControls) return;
+  gameOverControls.classList.toggle('hidden', !visible);
+  gameOverControls.classList.toggle('visible', visible);
 }
 
 function togglePause(force) {
@@ -482,8 +607,13 @@ function releaseEnemiesFromSupport(platformId) {
 let lastTime = performance.now();
 
 function update(dt) {
+  if (state.homeScreenActive) {
+    statusEl.textContent = 'Home - click Start to run';
+    return;
+  }
   if (state.gameOver) {
     gameOverState.animTime += dt;
+    updateGameOverTears(dt);
     statusEl.textContent = 'Game Over - press Y to continue';
     return;
   }
@@ -1343,9 +1473,11 @@ function handleGameOverKey(key) {
   if (key === 'y') {
     stopGameOverSound();
     resetGame();
+    lastTime = performance.now();
+    loop(lastTime);
   } else if (key === 'n') {
-  gameOverState.info = 'Take a breather... press Y when you are ready.';
-}
+    resetGame(true);
+  }
 }
 
 function triggerGameOver() {
@@ -1363,7 +1495,11 @@ function triggerGameOver() {
   gameOverState.playerW = player.w;
   gameOverState.playerH = player.h;
   gameOverState.animTime = 0;
-  gameOverState.info = 'Continue? Press Y for Yes or N for No.';
+  gameOverState.info = '';
+  state.gameOverTears.length = 0;
+  state.gameOverTearTimer = 0;
+  state.gameOverNextTearSide = 'left';
+  setGameOverControlsVisible(true);
   statusEl.textContent = 'Game Over - press Y to continue';
   stopAllSoundsExceptGameOver();
   playGameOverSound();
@@ -1396,12 +1532,13 @@ function recordHighScore(distance) {
 }
 }
 
-function resetGame() {
+function resetGame(toHome = false) {
   resetUpgradeFlags();
   const savedCoins = player.coins;
   const baseMaxHealth = PLAYER_CONFIG.maxHealth;
   const baseCoinMultiplier = 1;
   state.gameOver = false;
+  setGameOverControlsVisible(false);
   stopGameOverSound();
   statusEl.textContent = '';
   state.shopActive = false;
@@ -1426,19 +1563,28 @@ function resetGame() {
   state.generatedUntil = 0;
   world.width = canvas.width * 1.5;
   camera.x = 0;
+  state.gameOverTears.length = 0;
+  state.gameOverTearTimer = 0;
+  state.gameOverNextTearSide = 'left';
 
+  const newCoins = toHome ? 0 : savedCoins;
   player.reset(world, {
     maxHealth: baseMaxHealth,
     health: Math.min(baseMaxHealth, 10),
-    coins: savedCoins,
+    coins: newCoins,
     coinMultiplier: baseCoinMultiplier,
     regenUnlocked: false,
     nextShopAt: SHOP_INTERVAL,
   });
 applyPlayerScale();
 seedWorld();
-audio.setMusicResumeEnabled(true);
-resumeBackgroundMusic();
+  if (toHome) {
+    state.homeScreenActive = true;
+    setHomeScreenVisible(true);
+    audio.stopLoop?.('music');
+  } else {
+    audio.startMusic?.();
+  }
 }
 
 function overlap(a, b) {
@@ -1687,7 +1833,7 @@ if (!player.alive) {
 }
 }
 
-function drawGameOverScene() {
+function getGameOverPresentation() {
   const duration = Math.max(0.1, gameOverState.duration || 1.4);
   const progress = Math.min(1, gameOverState.animTime / duration);
   const ease = 1 - Math.pow(1 - progress, 3);
@@ -1703,10 +1849,116 @@ function drawGameOverScene() {
   const currentY = startY + (targetY - startY) * ease;
   const startW = gameOverState.startW ?? player.baseW;
   const startH = gameOverState.startH ?? player.baseH;
-  const displayW = startW;
-  const displayH = startH;
+  const targetScale = 10;
+  const scale = 1 + (targetScale - 1) * ease;
+  const displayW = startW * scale;
+  const displayH = startH * scale;
   const settleTime = Math.max(0, gameOverState.animTime - duration);
   const huffStrength = Math.min(1, settleTime * 1.2);
+  return {
+    ease,
+    centerX,
+    stageTop,
+    stageHeight,
+    stageWidth,
+    stageX,
+    currentX,
+    currentY,
+    displayW,
+    displayH,
+    settleTime,
+    huffStrength,
+    eyeOffsetX: displayW * 0.25,
+    eyeY: currentY - displayH * 0.1,
+    stageFloor: stageTop + stageHeight,
+  };
+}
+
+function updateGameOverTears(dt) {
+  if (!state.gameOver) return;
+  const presentation = getGameOverPresentation();
+  if (!presentation) return;
+  const {
+    currentX,
+    eyeOffsetX,
+    eyeY,
+    displayW,
+    displayH,
+    stageFloor,
+    ease,
+  } = presentation;
+  state.gameOverTearTimer = Math.max(0, state.gameOverTearTimer - dt);
+  for (let i = state.gameOverTears.length - 1; i >= 0; i--) {
+    const tear = state.gameOverTears[i];
+    tear.y += tear.speed * dt;
+    tear.height = Math.min(tear.maxHeight, tear.height + tear.extendRate * dt);
+    if (tear.y - tear.height > canvas.height + 60) {
+      state.gameOverTears.splice(i, 1);
+    }
+  }
+  if (ease <= 0.05 || state.gameOverTearTimer > 0) return;
+  const side = state.gameOverNextTearSide ?? 'left';
+  const sign = side === 'left' ? -1 : 1;
+  spawnGameOverTear(currentX + sign * eyeOffsetX, eyeY, displayW, displayH, stageFloor);
+  state.gameOverNextTearSide = side === 'left' ? 'right' : 'left';
+  state.gameOverTearTimer = Math.max(0.18, 0.35 - ease * 0.15);
+}
+
+function spawnGameOverTear(x, eyeY, displayW, displayH, stageFloor) {
+  const baseWidth = Math.max(12, displayW * 0.07);
+  const initialHeight = Math.max(20, displayH * 0.2);
+  const maxHeight = Math.max(initialHeight * 1.5, stageFloor - eyeY + 30);
+  const speed = 220 + displayH * 0.3;
+  const extendRate = Math.max(120, displayH * 0.35);
+  state.gameOverTears.push({
+    x,
+    y: eyeY,
+    width: baseWidth,
+    height: initialHeight,
+    maxHeight,
+    speed,
+    extendRate,
+  });
+}
+
+function drawGameOverTears(ease) {
+  if (!state.gameOverTears.length) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, 0.4 + ease * 0.6);
+  state.gameOverTears.forEach((tear) => {
+    const gradient = ctx.createLinearGradient(tear.x, tear.y, tear.x, tear.y + tear.height);
+    gradient.addColorStop(0, 'rgba(200, 240, 255, 0.95)');
+    gradient.addColorStop(1, 'rgba(93, 160, 255, 0.35)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(tear.x, tear.y);
+    ctx.lineTo(tear.x - tear.width / 2, tear.y + tear.height);
+    ctx.lineTo(tear.x + tear.width / 2, tear.y + tear.height);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawGameOverScene() {
+  const presentation = getGameOverPresentation();
+  if (!presentation) return;
+  const {
+    ease,
+    centerX,
+    stageTop,
+    stageHeight,
+    stageWidth,
+    stageX,
+    currentX,
+    currentY,
+    displayW,
+    displayH,
+    settleTime,
+    huffStrength,
+    eyeOffsetX,
+    eyeY,
+  } = presentation;
   const breathe = 1 + (0.04 + 0.06 * huffStrength) * Math.sin(gameOverState.animTime * 3.4);
   const puff = 1 - (0.04 + 0.05 * huffStrength) * Math.sin(gameOverState.animTime * 3.4 + Math.PI / 2);
 
@@ -1715,13 +1967,6 @@ function drawGameOverScene() {
 
   ctx.save();
   ctx.globalAlpha = ease;
-  const spotlight = ctx.createRadialGradient(centerX, stageTop - 160, 40, centerX, stageTop + 100, 420);
-  spotlight.addColorStop(0, 'rgba(255, 255, 220, 0.55)');
-  spotlight.addColorStop(0.5, 'rgba(200, 230, 255, 0.22)');
-  spotlight.addColorStop(1, 'rgba(5, 7, 20, 0)');
-  ctx.fillStyle = spotlight;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
   ctx.fillStyle = '#111a2d';
   ctx.fillRect(stageX, stageTop, stageWidth, stageHeight);
   ctx.fillStyle = '#0a101f';
@@ -1739,18 +1984,29 @@ function drawGameOverScene() {
   ctx.fill();
   ctx.fillStyle = '#3ba389';
   ctx.beginPath();
-  ctx.ellipse(currentX, currentY - 8, (displayW / 2.5) * breathe, (displayH / 3) * puff, 0, 0, Math.PI * 2);
+  ctx.ellipse(currentX, currentY - 12, (displayW / 2.5) * breathe, (displayH / 3) * puff, 0, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = '#0b1f1c';
+  ctx.lineWidth = Math.max(3, displayH * 0.04);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  const eyeWidth = displayW * 0.15;
+  ctx.moveTo(currentX - eyeOffsetX - eyeWidth / 2, eyeY);
+  ctx.lineTo(currentX - eyeOffsetX + eyeWidth / 2, eyeY);
+  ctx.moveTo(currentX + eyeOffsetX - eyeWidth / 2, eyeY);
+  ctx.lineTo(currentX + eyeOffsetX + eyeWidth / 2, eyeY);
+  ctx.stroke();
   ctx.restore();
+
+  drawGameOverTears(ease);
 
   ctx.fillStyle = `rgba(255, 138, 158, ${ease})`;
   ctx.font = 'bold 48px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('So Slime...', centerX, 140);
+  ctx.fillText('Slime is in pain...', centerX, 140);
   ctx.fillStyle = `rgba(212, 253, 245, ${ease})`;
   ctx.font = '24px Arial';
-  ctx.fillText(gameOverState.prompt, centerX, 180);
-  ctx.fillText(gameOverState.info || 'Continue? Press Y for Yes or N for No.', centerX, 214);
+  ctx.fillText('Continue?', centerX, 180);
 }
 
 function drawHealthBar(centerX, y, health, maxHealth) {

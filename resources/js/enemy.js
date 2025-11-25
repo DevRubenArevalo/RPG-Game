@@ -66,6 +66,9 @@ export function createEnemy({
     projectileCooldown: 0,
     projectileModeTimer: 0,
     projectileMode: 'vertical',
+    acidStacks: 0,
+    acidStackTimer: 0,
+    acidStackCooldown: 0,
   });
 }
 
@@ -183,32 +186,52 @@ export function updateEnemies({
       }
     }
 
-    let touchingAcid = false;
+    enemy.acidStackCooldown = Math.max(0, (enemy.acidStackCooldown || 0) - dt);
+    let touchingAcidCount = 0;
     for (const seg of trailSegments) {
       if (seg.life > 0 && overlap(enemy, seg)) {
-        touchingAcid = true;
+        touchingAcidCount += 1;
       }
     }
     for (const glob of slimeGlobs) {
       if (glob.life > 0 && overlap(enemy, glob)) {
-        touchingAcid = true;
+        touchingAcidCount += 1;
         glob.life -= dt * 1.4;
       }
     }
 
-    if (touchingAcid) {
+    if (touchingAcidCount > 0) {
+      if (!enemy.acidStacks || enemy.acidStacks < 1) {
+        enemy.acidStacks = 1;
+        enemy.acidStackTimer = 0;
+      }
+      enemy.acidStackTimer += dt * touchingAcidCount;
+      while (
+        enemy.acidStacks < 2 &&
+        enemy.acidStackTimer >= ACID_TICK_INTERVAL &&
+        enemy.acidStackCooldown <= 0
+      ) {
+        enemy.acidStackTimer -= ACID_TICK_INTERVAL;
+        enemy.acidStacks += 1;
+        enemy.acidStackCooldown = 1;
+      }
       enemy.acidTimer = 0.25;
       enemy.acidDuration = ACID_DEBUFF_DURATION;
     } else {
       enemy.acidTimer = Math.max(0, enemy.acidTimer - dt);
       enemy.acidDuration = Math.max(0, enemy.acidDuration - dt);
+      enemy.acidStackTimer = 0;
+      if (enemy.acidDuration <= 0) {
+        enemy.acidStacks = 0;
+      }
     }
 
     if (enemy.acidDuration > 0) {
       enemy.acidTickTimer -= dt;
       while (enemy.acidTickTimer <= 0 && enemy.acidDuration > 0) {
         enemy.acidTickTimer += ACID_TICK_INTERVAL;
-        const tickDamage = playerDamagePerTick();
+        const stackMultiplier = Math.max(1, enemy.acidStacks || 0);
+        const tickDamage = playerDamagePerTick() * stackMultiplier;
         enemy.health -= tickDamage;
         spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, tickDamage, `enemy-${enemy.id}`);
       }

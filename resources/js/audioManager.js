@@ -1,5 +1,6 @@
 export const AUDIO_TRACKS = {
   music: 'resources/audio/Time To Slime.mp3',
+  home: 'resources/audio/The Lonely Slime.mp3',
   jump: 'resources/audio/a-jump.mp3',
   death: 'resources/audio/dead-slime.mp3',
   corrosion: 'resources/audio/plaform-corrosion.mp3',
@@ -11,7 +12,8 @@ export const AUDIO_TRACKS = {
 
 export class AudioManager {
   constructor(paths = AUDIO_TRACKS, muteToggle) {
-    this.music = this.create(paths.music, { loop: true, volume: 0.05 });
+    this.music = this.create(paths.music, { loop: true, volume: 0.2 });
+    this.home = this.create(paths.home, { loop: true, volume: 0.05 });
     this.jump = this.create(paths.jump, { volume: 0.2 });
     this.death = this.create(paths.death, { volume: 0.75 });
     this.corrosion = this.create(paths.corrosion, { volume: 0.36, loop: true });
@@ -22,11 +24,8 @@ export class AudioManager {
     this.muteToggle = muteToggle;
     this.musicStarted = false;
     this.muted = false;
-    this.trackNames = ['music', 'jump', 'death', 'corrosion', 'coin', 'chunk', 'gameOver', 'hit'];
+    this.trackNames = ['home', 'music', 'jump', 'death', 'corrosion', 'coin', 'chunk', 'gameOver', 'hit'];
     this.allowMusicResume = true;
-    this.startMusic = this.startMusic.bind(this);
-    window.addEventListener('pointerdown', this.startMusic);
-    window.addEventListener('keydown', this.startMusic);
     if (this.muteToggle) {
       this.muteToggle.addEventListener('click', () => this.toggleMute());
     }
@@ -61,14 +60,21 @@ export class AudioManager {
     }
   }
 
-  startMusic() {
-    if (this.musicStarted || this.muted) return;
-    this.music.play().then(() => {
-      this.musicStarted = true;
-      window.removeEventListener('pointerdown', this.startMusic);
-      window.removeEventListener('keydown', this.startMusic);
+  startMusic(track = 'music') {
+    const target = this[track];
+    if (!target || this.muted) return;
+    if (track === 'music' && this.musicStarted) {
+      this.resumeMusic();
+      return;
+    }
+    target.play().then(() => {
+      if (track === 'music') {
+        this.musicStarted = true;
+      }
     }).catch(() => {
-      this.musicStarted = false;
+      if (track === 'music') {
+        this.musicStarted = false;
+      }
     });
   }
 
@@ -118,5 +124,16 @@ export class AudioManager {
     if (!enabled && !this.music.paused) {
       this.music.pause();
     }
+  }
+
+  playHomeMusic() {
+    this.stopLoop('music');
+    if (this.muted) return;
+    this.home.currentTime = 0;
+    this.home.play().catch(() => {});
+  }
+
+  stopHomeMusic() {
+    this.stopLoop('home');
   }
 }

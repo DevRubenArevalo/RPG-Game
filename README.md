@@ -4,11 +4,11 @@ An arcade-y endless platformer about a teal slime that corrodes everything it to
 
 ## How to Play
 
-1. **Launch** – Open `index.html` in a modern desktop browser (Chrome, Edge, Firefox). No build step is required; everything runs client-side.
+1. **Launch** – Open `index.html` in a modern desktop browser (Chrome, Edge, Firefox). You’ll land on the animated title screen; click **Start Run** to begin, or browse **Options/Credits** to read tips and see the slime-king shrine.
 2. **Move** – Run with `A/D` or the Arrow keys, jump with `Space`/`W`, and duck with `S`/`ArrowDown`. Holding duck after unlocking Bulwark Bloom turns you into a solid wall that can reflect enemy shots.
 3. **Leave slime** – Simply moving paints a corrosive trail that damages enemies and, once Corrosive Secrets is unlocked, melts platforms. Use it to soften targets before they reach you.
-4. **Fight & survive** – Avoid traps, stomp lighter foes, reflect or dodge projectiles, and collect slime chunks (heals) plus coins (shop currency). Holding `Duck + F` consumes 10 HP to raise a one-hit swallow shield.
-5. **Shop stops** – Every 5,000 distance units you reach triggers the shop overlay. Pick one of three random upgrades or spend 100 coins to reroll them. Each upgrade applies immediately and persists until you die.
+4. **Fight & survive** – Avoid slime pits and the new spike beds (5 HP on hit), stomp lighter foes, reflect or dodge projectiles, and collect slime chunks (heals) plus coins (shop currency). Holding `Duck + F` consumes 10 HP to raise a one-hit swallow shield.
+5. **Shop stops** – Every 5,000 distance units you reach triggers the shop overlay. Pick one of three random upgrades, spend 100 coins to reroll them, or hit **Skip and Continue** to keep moving. Each upgrade applies immediately and persists until you die.
 6. **Repeat** – Distance travelled, HP, and coins are always shown in the HUD. When you fall, press `Y` at the prompt to continue another run and chase a new high score.
 
 ## Controls
@@ -40,13 +40,18 @@ Enemies drop **coins** (shop currency) and **slime chunks** (heals 1 HP) with co
 
 - Keep at least 11 HP handy to trigger swallow shields before big gauntlets.
 - Let enemies chase you through your trail instead of trading hits head-on.
-- Corroded platforms can collapse under you after unlocking Corrosive Secrets—stay moving.
+- Corroded platforms can collapse under you after unlocking Corrosive Secrets—stay moving and mind spike traps on the ground.
 - Shop rerolls cost 100 coins; save some income if you are hunting for a specific build.
 - The HUD shows global best distance; markers appear directly in the level so you can see where previous runs ended.
+
+## Home & Pause Menus
+
+- The title screen features a looping “The Lonely Slime” theme plus **Start Run**, **Options**, and **Credits** buttons. Options/Credits swap the info panel, while Start hides the overlay and drops you into the run.
+- Pausing (Esc) now displays an ability list even before you buy upgrades. The default cards highlight Acid Trail and Swallow Shield so the menu never looks empty.
+- When you die, a giant slime fills the stage with teary eyes. Use the Yes/No buttons (or Y/N keys) to either continue immediately or return to the home screen for a fresh start.
 
 ## Running & Development Notes
 
 - Static files only; serve with any HTTP server (e.g., `npx serve .` or VS Code Live Server) if your browser disallows `file://` audio.
 - Assets live under `resources/` (audio, JS modules, upgrades JSON) and are imported via ES modules.
 - The project is entirely client-side, so deploying to GitHub Pages or any static host just requires copying the repository contents.
-
