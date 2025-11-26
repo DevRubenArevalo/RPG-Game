@@ -1,3 +1,5 @@
+import { UPGRADES } from './upgrades.js';
+
 const BASE_ABILITIES = [
   {
     id: 'acid_trail',
@@ -118,7 +120,11 @@ export class UIManager {
   updateAbilityList() {
     if (!this.abilityListEl) return;
     this.abilityListEl.innerHTML = '';
-    BASE_ABILITIES.forEach((entry) => {
+    const unlockedAbilities = (this.state.upgrades && Array.isArray(UPGRADES))
+      ? UPGRADES.filter((upg) => this.state.upgrades[upg.id])
+      : [];
+    const entries = [...BASE_ABILITIES, ...unlockedAbilities];
+    entries.forEach((entry) => {
       const li = document.createElement('li');
       li.innerHTML = `<strong>${entry.title}</strong><small>${entry.desc}</small>`;
       this.abilityListEl.appendChild(li);

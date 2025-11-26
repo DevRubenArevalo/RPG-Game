@@ -214,6 +214,7 @@ const uiManager = new UIManager({
   onTogglePause: togglePause,
   onResetGame: resetGame,
 });
+shopController.setAbilityListUpdater(() => uiManager.updateAbilityList());
 
 const gameOverManager = new GameOverManager({
   state,
