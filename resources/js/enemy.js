@@ -88,9 +88,12 @@ export function createEnemy({
 
 export function createBossEnemy({ canvas, world, player, camera }) {
   const size = canvas.height * BOSS_CONFIG.sizeRatio;
-  const minX = camera.x + 80;
-  const maxX = camera.x + canvas.width - size - 80;
-  const spawnX = clamp(player.x + canvas.width * 0.35, minX, Math.max(minX, maxX));
+  const offset = canvas.width + 200;
+  const spawnX = clamp(
+    player.x + offset,
+    camera.x + canvas.width + 120,
+    Math.max(0, world.width - size - 40),
+  );
   const spawnY = world.groundY - size;
   const jumpHeight = canvas.height * BOSS_CONFIG.jumpHeightRatio;
   const jumpDistance = canvas.width * BOSS_CONFIG.jumpDistanceRatio;
@@ -105,7 +108,7 @@ export function createBossEnemy({ canvas, world, player, camera }) {
     health: BOSS_CONFIG.health,
     maxHealth: BOSS_CONFIG.health,
     damage: BOSS_CONFIG.contactDamage,
-    bossPhase: 'windup',
+    bossPhase: 'idle',
     bossTimer: 0,
     bossWindup: BOSS_CONFIG.windup,
     bossJumpDuration: BOSS_CONFIG.jumpDuration,
@@ -121,6 +124,7 @@ export function createBossEnemy({ canvas, world, player, camera }) {
     poisonStacks: 0,
     regenRate: BOSS_CONFIG.regenRate,
     eyeOffset: size * 0.18,
+    awake: false,
   });
 }
 
@@ -330,6 +334,11 @@ export function updateEnemies({
     }
 
     if (overlap(player, enemy)) {
+      if (enemy.isBoss) {
+        hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2);
+        if (!player.alive) return;
+        continue;
+      }
       const stomping = spikedShoes &&
         player.vy > 0 &&
         player.prevY + player.h <= enemy.y + Math.min(enemy.h, 12);
@@ -414,6 +423,12 @@ function updateBossEnemy(enemy, dt, {
   playerDamagePerTick,
   spawnDamageNumber,
 }) {
+  if (!enemy.awake) {
+    enemy.y = enemy.groundY - enemy.h;
+    enemy.bossTimer = 0;
+    enemy.bossPhase = 'idle';
+    return;
+  }
   enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
   enemy.bossTimer += dt;
   enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);

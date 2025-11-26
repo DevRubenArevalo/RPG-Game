@@ -61,6 +61,7 @@ const {
   highScores,
   gameOverState,
 } = state;
+const viewRightMargin = state.viewRightMargin;
 
 
 
@@ -102,6 +103,10 @@ const worldController = new WorldController({
   playCorrosionSound,
 });
 const BOSS_TRIGGER_DISTANCE = 10000;
+function lerp(a, b, t) {
+  const clamped = Math.min(Math.max(t, 0), 1);
+  return a + (b - a) * clamped;
+}
 
 function update(dt) {
   if (state.homeScreenActive) {
@@ -124,6 +129,7 @@ function update(dt) {
     return;
   }
   checkBossSpawn();
+  updateCinematic(dt);
   state.slimeFlingCooldown -= dt;
   if (state.slimeFlingCooldown <= 0) {
     state.slimeFlingCooldown = 0;
@@ -210,7 +216,6 @@ gameOverNoButton?.addEventListener('click', () => {
   if (!state.gameOver) return;
   resetGame(true);
 });
-const viewRightMargin = state.viewRightMargin;
 let trailTimer = 0;
 const damageFloatSpeed = 28;
 const damageLifetime = 0.8;
@@ -312,8 +317,12 @@ function openDebugShop() {
 }
 
 function updateCamera() {
-  const desired = player.x - viewRightMargin;
   const maxCameraX = Math.max(0, world.width - canvas.width);
+  if (state.cinematicCameraX != null) {
+    camera.x = clamp(state.cinematicCameraX, 0, maxCameraX);
+    return;
+  }
+  const desired = player.x - viewRightMargin;
   camera.x = clamp(desired, 0, maxCameraX);
 }
 
@@ -889,10 +898,133 @@ function spawnBoss() {
   enemies.push(boss);
   player.nextShopAt = Infinity;
   statusEl.textContent = 'A colossal slime descends...';
+  audio.playBossMusic?.();
+  startBossCinematic(boss);
+}
+
+function startBossCinematic(boss) {
+  const cine = {
+    phase: 'toBoss',
+    timer: 0,
+    toBossDuration: 2,
+    roarDuration: 1.4,
+    backDuration: 1.6,
+    startCameraX: camera.x,
+    zoom: 1.2,
+    bossCameraX: getBossCameraX(boss),
+    returnStartCameraX: null,
+  };
+  state.cinematic = cine;
+  state.cinematicCameraX = camera.x;
+  state.cameraZoom = 1;
+  state.cameraZoomTarget = 1;
+  state.bossRoarWave = null;
+  if (boss) {
+    boss.awake = false;
+    boss.bossPhase = 'idle';
+    boss.bossTimer = 0;
+  }
+}
+
+function updateCinematic(dt) {
+  state.cameraZoomTarget = state.cameraZoomTarget || 1;
+  const cine = state.cinematic;
+  if (!cine) {
+    state.cameraZoomTarget = 1;
+    state.cinematicCameraX = null;
+    if (state.bossRoarWave) {
+      state.bossRoarWave.timer += dt;
+      if (state.bossRoarWave.timer >= state.bossRoarWave.duration) {
+        state.bossRoarWave = null;
+        if (state.boss) state.boss.roarActive = false;
+      }
+    }
+    state.cameraZoom += (state.cameraZoomTarget - state.cameraZoom) * Math.min(1, dt * 5);
+    return;
+  }
+  const boss = state.boss;
+  if (!boss) {
+    finishBossCinematic(true);
+    return;
+  }
+  switch (cine.phase) {
+    case 'toBoss': {
+      cine.timer += dt;
+      const progress = Math.min(1, cine.timer / cine.toBossDuration);
+      const targetCam = getBossCameraX(boss);
+      state.cinematicCameraX = lerp(cine.startCameraX, targetCam, progress);
+      state.cameraZoomTarget = lerp(1, cine.zoom, progress);
+      if (cine.timer >= cine.toBossDuration) {
+        cine.phase = 'roar';
+        cine.timer = 0;
+        state.cinematicCameraX = targetCam;
+        state.cameraZoomTarget = cine.zoom;
+        boss.roarActive = true;
+        state.bossRoarWave = { timer: 0, duration: 1.2 };
+        audio.playEffect('bossRoar');
+      }
+      break;
+    }
+    case 'roar': {
+      cine.timer += dt;
+      state.cinematicCameraX = getBossCameraX(boss);
+      state.cameraZoomTarget = cine.zoom;
+      if (state.bossRoarWave) {
+        state.bossRoarWave.timer += dt;
+        if (state.bossRoarWave.timer >= state.bossRoarWave.duration) {
+          state.bossRoarWave = null;
+          boss.roarActive = false;
+        }
+      }
+      if (cine.timer >= cine.roarDuration) {
+        cine.phase = 'back';
+        cine.timer = 0;
+        cine.returnStartCameraX = state.cinematicCameraX;
+        boss.roarActive = false;
+      }
+      break;
+    }
+    case 'back':
+    default: {
+      cine.timer += dt;
+      const progress = Math.min(1, cine.timer / cine.backDuration);
+      const playerCam = clamp(player.x - viewRightMargin, 0, Math.max(0, world.width - canvas.width));
+      const startCam = cine.returnStartCameraX ?? playerCam;
+      state.cinematicCameraX = lerp(startCam, playerCam, progress);
+      state.cameraZoomTarget = lerp(cine.zoom, 1, progress);
+      if (cine.timer >= cine.backDuration) {
+        finishBossCinematic();
+      }
+      break;
+    }
+  }
+  state.cameraZoom += (state.cameraZoomTarget - state.cameraZoom) * Math.min(1, dt * 5);
+}
+
+function finishBossCinematic(skipAwakening = false) {
+  state.cinematic = null;
+  state.cinematicCameraX = null;
+  state.cameraZoomTarget = 1;
+  state.cameraZoom = 1;
+  state.bossRoarWave = null;
+  if (!skipAwakening && state.boss) {
+    state.boss.awake = true;
+    state.boss.bossPhase = 'windup';
+    state.boss.bossTimer = 0;
+  }
+}
+
+function getBossCameraX(boss) {
+  const maxCameraX = Math.max(0, world.width - canvas.width);
+  const desired = boss.x + boss.w / 2 - canvas.width / 2;
+  return clamp(desired, 0, maxCameraX);
 }
 
 function handleBossDefeat() {
   if (state.levelComplete) return;
+  audio.stopBossMusic?.();
+  audio.startMusic?.();
+  finishBossCinematic(true);
   state.boss = null;
   state.bossDefeated = true;
   state.bossFightActive = false;
@@ -906,6 +1038,12 @@ function resetBossState() {
   state.boss = null;
   state.bossFightActive = false;
   state.bossDefeated = false;
+  state.cinematic = null;
+  state.cinematicCameraX = null;
+  state.bossRoarWave = null;
+  state.cameraZoomTarget = 1;
+  state.cameraZoom = 1;
+  audio.stopBossMusic?.();
 }
 
 function playEnemyDeathSound() {

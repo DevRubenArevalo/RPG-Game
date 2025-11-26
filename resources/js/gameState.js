@@ -62,5 +62,10 @@ export class GameState {
     this.bossDefeated = false;
     this.levelComplete = false;
     this.levelCompleteTimer = 0;
+    this.cameraZoom = 1;
+    this.cameraZoomTarget = 1;
+    this.cinematic = null;
+    this.cinematicCameraX = null;
+    this.bossRoarWave = null;
   }
 }

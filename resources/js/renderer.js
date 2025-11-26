@@ -29,6 +29,7 @@ export class Renderer {
       highScores,
       godMode,
       boss,
+      cameraZoom = 1,
     } = state;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawParallaxBackground();
@@ -37,6 +38,7 @@ export class Renderer {
       return;
     }
     ctx.save();
+    ctx.scale(cameraZoom, cameraZoom);
     ctx.translate(-camera.x, 0);
     ctx.fillStyle = '#162344';
     const groundStart = camera.x - 200;
@@ -163,8 +165,11 @@ export class Renderer {
     }
     if (boss) {
       this.drawBoss(boss);
+      this.drawBossHealthBarsWorld(boss);
+      this.drawBossRoarWave(boss);
     }
     enemies.forEach((enemy) => {
+      if (enemy.isBoss) return;
       ctx.fillStyle = enemy.acidTimer > 0 ? '#ffa1b1' : enemy.color;
       ctx.beginPath();
       ctx.ellipse(enemy.x + enemy.w / 2, enemy.y + enemy.h - 8, enemy.w / 2, enemy.h / 2, 0, 0, Math.PI * 2);
@@ -192,7 +197,6 @@ export class Renderer {
       ctx.fillText(`-${num.value}`, num.x, num.y);
     });
     ctx.restore();
-    this.drawBossHealthBars();
     if (godMode) {
       ctx.save();
       ctx.fillStyle = '#ffef5d';
@@ -459,26 +463,39 @@ export class Renderer {
     ctx.restore();
   }
 
-  drawBossHealthBars() {
-    const { ctx, canvas, state } = this;
-    const boss = state.boss;
-    if (!boss || (!state.bossFightActive && !state.levelComplete)) return;
-    const perRow = 40;
-    const rows = Math.ceil(boss.maxHealth / perRow);
-    const spacing = 20;
-    const startY = 80 + (rows - 1) * spacing;
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    ctx.fillStyle = '#d9fef9';
-    ctx.font = 'bold 18px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('Boss Vitality', canvas.width / 2, startY - rows * spacing - 10);
-    for (let row = 0; row < rows; row++) {
-      const chunkStart = row * perRow;
-      const chunkMax = Math.min(perRow, boss.maxHealth - chunkStart);
+  drawBossHealthBarsWorld(boss) {
+    if (!boss) return;
+    const rows = 2;
+    const perRow = Math.ceil((boss.maxHealth || 80) / rows);
+    let rowY = boss.y - 24;
+    for (let i = 0; i < rows; i++) {
+      const chunkStart = i * perRow;
+      const chunkMax = Math.min(perRow, (boss.maxHealth || 0) - chunkStart);
       const chunkVal = Math.max(0, Math.min(chunkMax, boss.health - chunkStart));
-      const rowY = startY - row * spacing;
-      this.drawHealthBar(canvas.width / 2, rowY, chunkVal, chunkMax);
+      this.drawHealthBar(boss.x + boss.w / 2, rowY, chunkVal, chunkMax);
+      rowY -= 18;
+    }
+  }
+
+  drawBossRoarWave(boss) {
+    const { ctx, state } = this;
+    const wave = state.bossRoarWave;
+    if (!boss || !wave) return;
+    const progress = Math.min(1, wave.timer / wave.duration);
+    const baseRadius = Math.max(boss.w, boss.h) * 0.6;
+    const centerX = boss.x + boss.w / 2;
+    const centerY = boss.y + boss.h / 2;
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      const local = Math.max(0, progress - i * 0.12);
+      const alpha = Math.max(0, 0.5 - local);
+      if (alpha <= 0) continue;
+      const radius = baseRadius + local * baseRadius * 1.5 + i * 10;
+      ctx.strokeStyle = `rgba(93, 255, 186, ${alpha})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(centerX, centerY, radius, radius * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
     ctx.restore();
   }
