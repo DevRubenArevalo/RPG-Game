@@ -7,6 +7,7 @@ export class InputManager {
     openShop,
     gameOverManager,
     toggleMovementOverlay,
+    toggleDebugMenu,
   }) {
     this.state = gameState;
     this.player = player;
@@ -15,6 +16,7 @@ export class InputManager {
     this.openShop = openShop;
     this.gameOverManager = gameOverManager;
     this.toggleMovementOverlay = toggleMovementOverlay;
+    this.toggleDebugMenu = toggleDebugMenu;
     this.arrowKeys = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
@@ -46,7 +48,8 @@ export class InputManager {
       return;
     }
     if (key === 'g') {
-      state.godMode = !state.godMode;
+      this.toggleDebugMenu?.();
+      e.preventDefault();
       return;
     }
     if (key === 'h') {

@@ -2,10 +2,10 @@ import { CONSTANTS } from './constants.js';
 import { AudioManager, AUDIO_TRACKS } from './audioManager.js';
 import { ShopManager, SHOP_INTERVAL } from './shopManager.js';
 import { GameState } from './gameState.js';
-import { ENEMY_CONFIG, createEnemy, updateEnemies } from './enemy.js';
+import { ENEMY_CONFIG, createEnemy, createBossEnemy, updateEnemies } from './enemy.js';
 import { Player, PLAYER_CONFIG, updatePlayerMovement } from './player.js';
 import { UPGRADES } from './upgrades.js';
-import { clamp, overlap, randomRange } from './utils.js';
+import { clamp, overlap } from './utils.js';
 import { InputManager } from './inputManager.js';
 import { PlayerManager } from './playerManager.js';
 import { ShopController } from './shopController.js';
@@ -101,6 +101,7 @@ const worldController = new WorldController({
   playerDamagePerTick,
   playCorrosionSound,
 });
+const BOSS_TRIGGER_DISTANCE = 10000;
 
 function update(dt) {
   if (state.homeScreenActive) {
@@ -117,6 +118,12 @@ function update(dt) {
     statusEl.textContent = 'Paused - press Esc to continue';
     return;
   }
+  if (state.levelComplete) {
+    state.levelCompleteTimer += dt;
+    statusEl.textContent = 'Level Complete - press Play Again';
+    return;
+  }
+  checkBossSpawn();
   state.slimeFlingCooldown -= dt;
   if (state.slimeFlingCooldown <= 0) {
     state.slimeFlingCooldown = 0;
@@ -132,7 +139,7 @@ function update(dt) {
     duck: keys.has('arrowdown') || keys.has('s'),
     swallow: keys.has('f'),
   };
-  const allowMovement = !state.shopActive;
+  const allowMovement = !state.shopActive && !state.levelComplete;
   updatePlayerMovement(player, dt, input, world, {
     swallowShield,
     applyPlayerScale: () => playerManager.applyScale(),
@@ -184,9 +191,12 @@ function update(dt) {
     PROJECTILE_MODE_SWITCH,
     PROJECTILE_SPEED,
     spikedShoes: state.upgrades.spiked_shoes,
+    onBossDefeated: handleBossDefeat,
   });
+  if (!state.bossFightActive) {
+    checkTraps();
+  }
   updateDamageNumbers(dt);
-  checkTraps();
   worldController.cleanupOldEntities();
 }
 
@@ -213,6 +223,13 @@ const uiManager = new UIManager({
   player,
   onTogglePause: togglePause,
   onResetGame: resetGame,
+  debugActions: {
+    toggleGodMode: () => toggleGodMode(),
+    addCoins: () => addDebugCoins(),
+    unlockAllAbilities: () => unlockAllAbilities(),
+    travelDistance: () => travelDebugDistance(),
+    forceShop: () => openDebugShop(),
+  },
 });
 shopController.setAbilityListUpdater(() => uiManager.updateAbilityList());
 
@@ -241,6 +258,7 @@ const inputManager = new InputManager({
   openShop: shopController.openShop.bind(shopController),
   gameOverManager,
   toggleMovementOverlay: uiManager.toggleMovementOverlay.bind(uiManager),
+  toggleDebugMenu: uiManager.toggleDebugMenu.bind(uiManager),
 });
 
 const renderer = new Renderer({
@@ -252,7 +270,7 @@ const renderer = new Renderer({
 });
 
 function togglePause(force) {
-  if (state.gameOver || state.shopActive) return;
+  if (state.gameOver || state.shopActive || state.levelComplete) return;
   const next = typeof force === 'boolean' ? force : !state.paused;
   if (state.paused === next) return;
   state.paused = next;
@@ -261,6 +279,36 @@ function togglePause(force) {
     keys.clear();
     statusEl.textContent = 'Paused - press Esc to continue';
   }
+}
+
+function toggleGodMode(force) {
+  const next = typeof force === 'boolean' ? force : !state.godMode;
+  state.godMode = next;
+}
+
+function addDebugCoins(amount = 1000) {
+  player.coins += amount;
+}
+
+function unlockAllAbilities() {
+  UPGRADES.forEach((upgrade) => {
+    if (!state.upgrades[upgrade.id]) {
+      shopController.applyUpgrade(upgrade);
+    }
+  });
+}
+
+function travelDebugDistance(amount = 9000) {
+  const targetX = clamp(player.x + amount, 0, world.width - player.w);
+  player.x = targetX;
+  player.prevX = targetX;
+  player.farthest = Math.max(player.farthest, targetX);
+  worldController.ensureWorldAhead();
+}
+
+function openDebugShop() {
+  if (state.shopActive || state.bossFightActive || state.levelComplete) return;
+  shopController.openShop(true);
 }
 
 function updateCamera() {
@@ -816,7 +864,48 @@ function checkTraps() {
     if (overlap(player, trap)) {
       hurtPlayer(trap.damage ?? 1, trap.x + trap.w / 2);
     }
+  }
 }
+
+function checkBossSpawn() {
+  if (state.bossFightActive || state.levelComplete || state.gameOver) return;
+  if (player.farthest < BOSS_TRIGGER_DISTANCE) return;
+  spawnBoss();
+}
+
+function spawnBoss() {
+  const boss = createBossEnemy({ canvas, world, player, camera });
+  state.boss = boss;
+  state.bossFightActive = true;
+  state.bossDefeated = false;
+  state.shopActive = false;
+  shopManager.close();
+  enemies.length = 0;
+  traps.length = 0;
+  enemyProjectiles.length = 0;
+  coins.length = 0;
+  slimeChunks.length = 0;
+  slimeGlobs.length = 0;
+  enemies.push(boss);
+  player.nextShopAt = Infinity;
+  statusEl.textContent = 'A colossal slime descends...';
+}
+
+function handleBossDefeat() {
+  if (state.levelComplete) return;
+  state.boss = null;
+  state.bossDefeated = true;
+  state.bossFightActive = false;
+  state.levelComplete = true;
+  state.levelCompleteTimer = 0;
+  uiManager.setLevelCompleteVisible(true);
+  statusEl.textContent = 'Level Complete - press Play Again';
+}
+
+function resetBossState() {
+  state.boss = null;
+  state.bossFightActive = false;
+  state.bossDefeated = false;
 }
 
 function playEnemyDeathSound() {
@@ -892,6 +981,10 @@ function recordHighScore(distance) {
 
 function resetGame(toHome = false) {
   shopController.resetUpgradeFlags();
+  resetBossState();
+  state.levelComplete = false;
+  state.levelCompleteTimer = 0;
+  uiManager.setLevelCompleteVisible(false);
   state.paused = false;
   const savedCoins = player.coins;
   const baseMaxHealth = PLAYER_CONFIG.maxHealth;

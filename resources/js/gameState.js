@@ -57,5 +57,10 @@ export class GameState {
     this.generationMargin = this.canvas.width * constants.generation.generationMarginMultiplier;
     this.cleanupBuffer = this.canvas.width * constants.generation.cleanupBufferMultiplier;
     this.viewRightMargin = this.canvas.width * 0.4;
+    this.boss = null;
+    this.bossFightActive = false;
+    this.bossDefeated = false;
+    this.levelComplete = false;
+    this.levelCompleteTimer = 0;
   }
 }

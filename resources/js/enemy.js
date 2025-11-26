@@ -1,5 +1,5 @@
 import { Projectile } from './projectile.js';
-import { overlap } from './utils.js';
+import { clamp, overlap } from './utils.js';
 
 export const ENEMY_CONFIG = {
   width: 44,
@@ -13,6 +13,19 @@ export const ENEMY_CONFIG = {
     { tier: 'medium', health: 20, damage: 6, color: '#ffd25d' },
     { tier: 'hard', health: 30, damage: 9, color: '#ff5d6c' },
   ],
+};
+
+const BOSS_CONFIG = {
+  sizeRatio: 0.6,
+  health: 80,
+  windup: 2.4,
+  jumpDuration: 1.8,
+  recoverDuration: 1.2,
+  jumpDistanceRatio: 0.5,
+  jumpHeightRatio: 0.7,
+  contactDamage: 5,
+  regenRate: 1,
+  poisonInterval: 2,
 };
 
 export class Enemy {
@@ -73,6 +86,44 @@ export function createEnemy({
   });
 }
 
+export function createBossEnemy({ canvas, world, player, camera }) {
+  const size = canvas.height * BOSS_CONFIG.sizeRatio;
+  const minX = camera.x + 80;
+  const maxX = camera.x + canvas.width - size - 80;
+  const spawnX = clamp(player.x + canvas.width * 0.35, minX, Math.max(minX, maxX));
+  const spawnY = world.groundY - size;
+  const jumpHeight = canvas.height * BOSS_CONFIG.jumpHeightRatio;
+  const jumpDistance = canvas.width * BOSS_CONFIG.jumpDistanceRatio;
+  return new Enemy({
+    id: `boss-${Date.now()}`,
+    isBoss: true,
+    x: spawnX,
+    y: spawnY,
+    w: size,
+    h: size,
+    color: '#35d0ba',
+    health: BOSS_CONFIG.health,
+    maxHealth: BOSS_CONFIG.health,
+    damage: BOSS_CONFIG.contactDamage,
+    bossPhase: 'windup',
+    bossTimer: 0,
+    bossWindup: BOSS_CONFIG.windup,
+    bossJumpDuration: BOSS_CONFIG.jumpDuration,
+    bossRecoverDuration: BOSS_CONFIG.recoverDuration,
+    jumpStartX: spawnX,
+    jumpTargetX: spawnX,
+    jumpHeight,
+    jumpDistance,
+    groundY: world.groundY,
+    hitFlash: 0,
+    poisonCooldown: 0,
+    poisonInterval: BOSS_CONFIG.poisonInterval,
+    poisonStacks: 0,
+    regenRate: BOSS_CONFIG.regenRate,
+    eyeOffset: size * 0.18,
+  });
+}
+
 export function updateEnemies({
   enemies,
   dt,
@@ -96,11 +147,22 @@ export function updateEnemies({
   PROJECTILE_MODE_SWITCH,
   PROJECTILE_SPEED,
   spikedShoes = false,
+  onBossDefeated,
 }) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const enemy = enemies[i];
     enemy.prevY = enemy.y;
 
+    if (enemy.isBoss) {
+      updateBossEnemy(enemy, dt, {
+        player,
+        world,
+        trailSegments,
+        slimeGlobs,
+        playerDamagePerTick,
+        spawnDamageNumber,
+      });
+    } else {
     const attachToPlatform = (plat) => {
       if (!plat) return false;
       enemy.supportId = plat.id;
@@ -253,10 +315,16 @@ export function updateEnemies({
       }
     }
 
+    }
+
     if (enemy.health <= 0) {
-      playEnemyDeathSound();
-      spawnSlimeChunks(enemy);
-      spawnCoins(enemy);
+      if (enemy.isBoss) {
+        onBossDefeated?.(enemy);
+      } else {
+        playEnemyDeathSound();
+        spawnSlimeChunks(enemy);
+        spawnCoins(enemy);
+      }
       enemies.splice(i, 1);
       continue;
     }
@@ -335,5 +403,92 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       reflected: false,
       trailTimer: 0,
     }));
+  }
+}
+
+function updateBossEnemy(enemy, dt, {
+  player,
+  world,
+  trailSegments,
+  slimeGlobs,
+  playerDamagePerTick,
+  spawnDamageNumber,
+}) {
+  enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
+  enemy.bossTimer += dt;
+  enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);
+  switch (enemy.bossPhase) {
+    case 'windup':
+      enemy.y = enemy.groundY - enemy.h;
+      if (enemy.bossTimer >= enemy.bossWindup) {
+        startBossJump(enemy, player, world);
+      }
+      break;
+    case 'jump': {
+      const progress = Math.min(1, enemy.bossTimer / enemy.bossJumpDuration);
+      const eased = 1 - Math.pow(1 - progress, 2);
+      enemy.x = clamp(
+        enemy.jumpStartX + (enemy.jumpTargetX - enemy.jumpStartX) * eased,
+        0,
+        Math.max(0, world.width - enemy.w),
+      );
+      const arc = Math.sin(progress * Math.PI) * enemy.jumpHeight;
+      enemy.y = enemy.groundY - enemy.h - arc;
+      if (progress >= 1) {
+        enemy.bossPhase = 'recover';
+        enemy.bossTimer = 0;
+        enemy.y = enemy.groundY - enemy.h;
+      }
+      break;
+    }
+    case 'recover':
+    default:
+      enemy.y = enemy.groundY - enemy.h;
+      if (enemy.bossTimer >= enemy.bossRecoverDuration) {
+        enemy.bossPhase = 'windup';
+        enemy.bossTimer = 0;
+      }
+      break;
+  }
+  applyBossPoison(enemy, dt, trailSegments, slimeGlobs, playerDamagePerTick, spawnDamageNumber);
+}
+
+function startBossJump(enemy, player, world) {
+  enemy.bossPhase = 'jump';
+  enemy.bossTimer = 0;
+  enemy.jumpStartX = enemy.x;
+  const bossCenter = enemy.x + enemy.w / 2;
+  const playerCenter = player.x + player.w / 2;
+  const direction = playerCenter >= bossCenter ? 1 : -1;
+  const desired = enemy.x + direction * enemy.jumpDistance;
+  enemy.jumpTargetX = clamp(desired, 0, Math.max(0, world.width - enemy.w));
+}
+
+function applyBossPoison(enemy, dt, trailSegments, slimeGlobs, playerDamagePerTick, spawnDamageNumber) {
+  let stacks = 0;
+  for (const seg of trailSegments) {
+    if (stacks >= 2) break;
+    if (overlap(enemy, seg)) {
+      stacks += 1;
+    }
+  }
+  for (const glob of slimeGlobs) {
+    if (overlap(enemy, glob)) {
+      glob.life -= dt * 2;
+      if (stacks < 2) {
+        stacks += 1;
+      }
+    }
+    if (stacks >= 2) break;
+  }
+  enemy.poisonStacks = Math.min(2, Math.max(enemy.poisonStacks || 0, stacks));
+  enemy.poisonCooldown = Math.max(0, (enemy.poisonCooldown ?? 0) - dt);
+  if (enemy.poisonCooldown <= 0 && (enemy.poisonStacks || 0) > 0) {
+    const damage = playerDamagePerTick() * enemy.poisonStacks;
+    enemy.health = Math.max(0, enemy.health - damage);
+    enemy.hitFlash = 0.2;
+    spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, damage, `boss-poison`);
+    enemy.poisonStacks = 0;
+    enemy.poisonCooldown = enemy.poisonInterval || BOSS_CONFIG.poisonInterval;
   }
 }

@@ -28,6 +28,7 @@ export class Renderer {
       coinImage,
       highScores,
       godMode,
+      boss,
     } = state;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawParallaxBackground();
@@ -160,6 +161,9 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
+    if (boss) {
+      this.drawBoss(boss);
+    }
     enemies.forEach((enemy) => {
       ctx.fillStyle = enemy.acidTimer > 0 ? '#ffa1b1' : enemy.color;
       ctx.beginPath();
@@ -188,6 +192,7 @@ export class Renderer {
       ctx.fillText(`-${num.value}`, num.x, num.y);
     });
     ctx.restore();
+    this.drawBossHealthBars();
     if (godMode) {
       ctx.save();
       ctx.fillStyle = '#ffef5d';
@@ -414,4 +419,68 @@ export class Renderer {
     ctx.fillText(remaining.toFixed(1), centerX, centerY + 4);
     ctx.restore();
   }
+
+  drawBoss(boss) {
+    const { ctx } = this;
+    ctx.save();
+    const baseColor = boss.color || '#35d0ba';
+    const flashAlpha = boss.hitFlash ? Math.min(1, boss.hitFlash * 4) : 0;
+    const fillColor = flashAlpha > 0 ? `rgba(255, 255, 255, ${flashAlpha})` : baseColor;
+    ctx.fillStyle = fillColor;
+    const centerX = boss.x + boss.w / 2;
+    const centerY = boss.y + boss.h / 2;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, boss.w / 2, boss.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(45, 147, 122, 0.85)';
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY - boss.h * 0.18, boss.w / 3, boss.h / 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0b1f1c';
+    ctx.lineWidth = Math.max(6, boss.h * 0.04);
+    ctx.lineCap = 'round';
+    const eyeOffset = boss.w * 0.18;
+    const eyeWidth = boss.w * 0.14;
+    const eyeY = boss.y + boss.h * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(centerX - eyeOffset - eyeWidth / 2, eyeY);
+    ctx.lineTo(centerX - eyeOffset + eyeWidth / 2, eyeY);
+    ctx.moveTo(centerX + eyeOffset - eyeWidth / 2, eyeY);
+    ctx.lineTo(centerX + eyeOffset + eyeWidth / 2, eyeY);
+    ctx.stroke();
+    if (boss.bossPhase === 'windup') {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.004);
+      ctx.strokeStyle = `rgba(255, 210, 93, ${0.35 + pulse * 0.3})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.ellipse(centerX, boss.groundY, boss.w * 0.65, boss.h * 0.1 + pulse * 10, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawBossHealthBars() {
+    const { ctx, canvas, state } = this;
+    const boss = state.boss;
+    if (!boss || (!state.bossFightActive && !state.levelComplete)) return;
+    const perRow = 40;
+    const rows = Math.ceil(boss.maxHealth / perRow);
+    const spacing = 20;
+    const startY = 80 + (rows - 1) * spacing;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#d9fef9';
+    ctx.font = 'bold 18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Boss Vitality', canvas.width / 2, startY - rows * spacing - 10);
+    for (let row = 0; row < rows; row++) {
+      const chunkStart = row * perRow;
+      const chunkMax = Math.min(perRow, boss.maxHealth - chunkStart);
+      const chunkVal = Math.max(0, Math.min(chunkMax, boss.health - chunkStart));
+      const rowY = startY - row * spacing;
+      this.drawHealthBar(canvas.width / 2, rowY, chunkVal, chunkMax);
+    }
+    ctx.restore();
+  }
+
 }
