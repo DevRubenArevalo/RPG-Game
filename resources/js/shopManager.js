@@ -14,6 +14,7 @@ export class ShopManager {
     this.options = options;
     this.active = true;
     this.onSelect = handler;
+    this.overlay?.classList.remove('hidden');
     this.overlay?.classList.add('visible');
     this.renderTiles();
     this.updateMessage('Click a boon to claim it.');
@@ -23,6 +24,7 @@ export class ShopManager {
     this.updateMessage(message);
     this.active = false;
     this.overlay?.classList.remove('visible');
+    this.overlay?.classList.add('hidden');
     if (this.tilesEl) this.tilesEl.innerHTML = '';
     this.onSelect = null;
   }

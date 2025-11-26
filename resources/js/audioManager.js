@@ -13,7 +13,7 @@ export const AUDIO_TRACKS = {
 export class AudioManager {
   constructor(paths = AUDIO_TRACKS, muteToggle) {
     this.music = this.create(paths.music, { loop: true, volume: 0.2 });
-    this.home = this.create(paths.home, { loop: true, volume: 0.05 });
+    this.home = this.create(paths.home, { loop: true, volume: 0.2 });
     this.jump = this.create(paths.jump, { volume: 0.2 });
     this.death = this.create(paths.death, { volume: 0.75 });
     this.corrosion = this.create(paths.corrosion, { volume: 0.36, loop: true });

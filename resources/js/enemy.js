@@ -1,4 +1,5 @@
 import { Projectile } from './projectile.js';
+import { overlap } from './utils.js';
 
 export const ENEMY_CONFIG = {
   width: 44,
@@ -335,11 +336,4 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       trailTimer: 0,
     }));
   }
-}
-
-function overlap(a, b) {
-  return a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y;
 }
