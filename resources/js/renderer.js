@@ -209,7 +209,8 @@ export class Renderer {
   }
 
   drawParallaxBackground() {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, state } = this;
+    const cameraX = state.camera.x;
     ctx.fillStyle = ctx.createLinearGradient(0, 0, 0, canvas.height);
     const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
     skyGradient.addColorStop(0, '#040816');
@@ -223,7 +224,8 @@ export class Renderer {
       { speed: 0.45, color: '#152b4d', tree: '#20415f', spacing: 140, height: 190, canopy: '#2a5676', offsetY: 60 },
     ];
     layers.forEach((layer) => {
-      const offset = (performance.now() * 0.02 * layer.speed) % layer.spacing;
+      const rawOffset = (cameraX * layer.speed) % layer.spacing;
+      const offset = (rawOffset + layer.spacing) % layer.spacing;
       ctx.fillStyle = layer.color;
       ctx.fillRect(0, canvas.height - layer.offsetY, canvas.width, layer.offsetY);
       for (let x = -offset; x < canvas.width + layer.spacing; x += layer.spacing) {
