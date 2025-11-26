@@ -20,9 +20,18 @@ export class ShopController {
     this.shopManager = shopManager;
     this.shopRefreshButton = shopRefreshButton;
     this.shopSkipButton = shopSkipButton;
+    this.onAbilityListUpdate = null;
     this.handleSelection = this.handleSelection.bind(this);
     this.bindEvents();
     this.resetUpgradeFlags();
+  }
+
+  setAbilityListUpdater(cb) {
+    this.onAbilityListUpdate = cb;
+  }
+
+  notifyAbilityUpdate() {
+    this.onAbilityListUpdate?.();
   }
 
   bindEvents() {
@@ -106,6 +115,7 @@ export class ShopController {
     }
     this.state.magnetRange = 0;
     this.state.purchasedUpgrades?.clear?.();
+    this.notifyAbilityUpdate();
   }
 
   pickShopOptions(limit = 3) {
@@ -152,6 +162,7 @@ export class ShopController {
 
   applyUpgrade(upgrade) {
     this.state.upgrades[upgrade.id] = true;
+    this.state.purchasedUpgrades?.add?.(upgrade.id);
     switch (upgrade.id) {
       case 'slime_wall':
         this.player.wallMode = false;
@@ -177,6 +188,7 @@ export class ShopController {
       default:
         break;
     }
+    this.notifyAbilityUpdate();
   }
 }
 

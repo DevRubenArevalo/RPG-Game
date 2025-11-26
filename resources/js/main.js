@@ -214,6 +214,7 @@ const uiManager = new UIManager({
   onTogglePause: togglePause,
   onResetGame: resetGame,
 });
+shopController.setAbilityListUpdater(() => uiManager.updateAbilityList());
 
 const gameOverManager = new GameOverManager({
   state,
@@ -297,7 +298,7 @@ function resolvePlatformCollisions(playerEntity) {
         grounded = true;
         break;
       }
-      if (playerEntity.vy < 0 && prevTop >= plat.y + plat.h && top <= plat.y + plat.h) {
+      if (!plat.passable && playerEntity.vy < 0 && prevTop >= plat.y + plat.h && top <= plat.y + plat.h) {
         playerEntity.y = plat.y + plat.h;
         playerEntity.vy = 0;
       }
