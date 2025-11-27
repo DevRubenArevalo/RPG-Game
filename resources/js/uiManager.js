@@ -77,6 +77,7 @@ export class UIManager {
     this.debugAbilitiesBtn = document.getElementById('debugUnlockAbilities');
     this.debugTravelBtn = document.getElementById('debugTravelBoost');
     this.debugShopBtn = document.getElementById('debugOpenShop');
+    this.debug999DamageBtn = document.getElementById('debug999Damage');
     this.levelCompleteOverlay = document.getElementById('levelCompleteOverlay');
     this.levelCompleteReplay = document.getElementById('levelCompleteReplay');
     this.movementDebugVisible = false;
@@ -129,6 +130,7 @@ export class UIManager {
     this.debugAbilitiesBtn?.addEventListener('click', () => this.debugActions.unlockAllAbilities?.());
     this.debugTravelBtn?.addEventListener('click', () => this.debugActions.travelDistance?.());
     this.debugShopBtn?.addEventListener('click', () => this.debugActions.forceShop?.());
+    this.debug999DamageBtn?.addEventListener('click', () => this.debugActions.toggle999Damage?.());
   }
 
   bindLevelCompleteEvents() {

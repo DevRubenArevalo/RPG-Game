@@ -256,7 +256,14 @@ export class Renderer {
     if (state.debugShowCollisions) {
       this.drawAllCollisionDebug(state, platforms, traps, world);
     }
+    
     ctx.restore();
+    
+    // Draw defeat cinematic particles and rain (after restore to use screen coordinates)
+    if (state.defeatCinematic) {
+      this.drawDefeatCinematicElements(state.defeatCinematic);
+    }
+    
     if (godMode) {
       ctx.save();
       ctx.fillStyle = '#ffef5d';
@@ -342,6 +349,59 @@ export class Renderer {
     ctx.restore();
   }
 
+  drawDefeatCinematicElements(defeatCinematic) {
+    const { ctx, canvas } = this;
+    
+    if (defeatCinematic.rainItems.length > 0) {
+      console.log(`🎨 Drawing ${defeatCinematic.rainItems.length} rain items. First item: type=${defeatCinematic.rainItems[0].type}, x=${defeatCinematic.rainItems[0].x}, y=${defeatCinematic.rainItems[0].y}`);
+    }
+    
+    // Draw explosion particles
+    ctx.save();
+    defeatCinematic.explosionParticles.forEach((p) => {
+      const alpha = p.life / p.maxLife;
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+    
+    // Draw rain items (chunks and coins)
+    ctx.save();
+    defeatCinematic.rainItems.forEach((item) => {
+      if (item.type === 'chunk') {
+        ctx.fillStyle = '#5dffba';
+        ctx.fillRect(item.x, item.y, item.w, item.h);
+        ctx.fillStyle = '#3ba389';
+        ctx.fillRect(item.x + 3, item.y + 3, item.w - 6, item.h - 6);
+      } else {
+        // Draw coin as simple circle
+        ctx.fillStyle = '#ffd25d';
+        ctx.beginPath();
+        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffef5d';
+        ctx.beginPath();
+        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    ctx.restore();
+    
+    // Draw white flash
+    if (this.state.whiteFlash) {
+      const flash = this.state.whiteFlash;
+      const alpha = Math.max(0, 1 - (flash.timer / flash.duration));
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+  }
+
   drawGameOverScene() {
     const { ctx, canvas, state } = this;
     const presentation = this.gameOverManager.getPresentation();
@@ -396,6 +456,18 @@ export class Renderer {
     ctx.moveTo(currentX + eyeOffsetX - eyeWidth / 2, eyeY);
     ctx.lineTo(currentX + eyeOffsetX + eyeWidth / 2, eyeY);
     ctx.stroke();
+    
+    // Draw smiling face if level complete
+    if (state.levelComplete && state.bossDefeated) {
+      const mouthY = eyeY + displayH * 0.15;
+      const mouthWidth = displayW * 0.2;
+      ctx.strokeStyle = '#0b1f1c';
+      ctx.lineWidth = Math.max(2, displayH * 0.03);
+      ctx.beginPath();
+      ctx.arc(currentX, mouthY, mouthWidth / 2, 0, Math.PI);
+      ctx.stroke();
+    }
+    
     ctx.restore();
     this.drawGameOverTears(ease);
     ctx.fillStyle = `rgba(255, 138, 158, ${ease})`;
@@ -518,7 +590,21 @@ export class Renderer {
 
   drawBoss(boss) {
     const { ctx } = this;
+    
+    // Don't draw if invisible (after explosion)
+    if (boss.invisible) {
+      return;
+    }
+    
     ctx.save();
+    
+    // Handle defeat morphing and swelling
+    if (boss.defeatMorphMode === 'amoeba') {
+      this.drawBossAmoeba(ctx, boss);
+      ctx.restore();
+      return;
+    }
+    
     const baseColor = boss.color || '#35d0ba';
     const flashAlpha = boss.hitFlash ? Math.min(1, boss.hitFlash * 4) : 0;
     const fillColor = flashAlpha > 0 ? `rgba(255, 255, 255, ${flashAlpha})` : baseColor;
@@ -559,6 +645,73 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  drawBossAmoeba(ctx, boss) {
+    const centerX = boss.x + boss.w / 2;
+    const centerY = boss.y + boss.h / 2;
+    const morphProgress = boss.defeatMorphProgress ?? 0;
+    const swellProgress = boss.defeatSwellProgress ?? 0;
+    
+    // Base radius
+    let baseRadius = boss.w / 2;
+    
+    // Swell effect: pulses outward then contracts
+    const swellAmount = Math.sin(swellProgress * Math.PI) * baseRadius * 0.3;
+    const currentRadius = baseRadius + swellAmount;
+    
+    // Draw amoeba with wavy edges
+    const waveCount = 6 + Math.floor(morphProgress * 4);
+    const waveAmplitude = baseRadius * 0.15 * (1 + morphProgress * 0.5);
+    
+    ctx.fillStyle = '#20d9d9';
+    ctx.beginPath();
+    
+    for (let i = 0; i <= waveCount * 2; i++) {
+      const angle = (i / (waveCount * 2)) * Math.PI * 2;
+      const wave = Math.sin(angle * waveCount + swellProgress * Math.PI * 2) * waveAmplitude;
+      const radius = currentRadius + wave;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Inner shading
+    ctx.fillStyle = 'rgba(32, 217, 217, 0.5)';
+    ctx.beginPath();
+    for (let i = 0; i <= waveCount * 2; i++) {
+      const angle = (i / (waveCount * 2)) * Math.PI * 2;
+      const wave = Math.sin(angle * waveCount + swellProgress * Math.PI * 2) * waveAmplitude;
+      const radius = (currentRadius + wave) * 0.5;
+      const x = centerX + Math.cos(angle) * radius;
+      const y = centerY + Math.sin(angle) * radius;
+      
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw eyes if not too far into swell
+    if (swellProgress < 0.8) {
+      ctx.strokeStyle = '#0b1f1c';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      const eyeOffset = currentRadius * 0.4;
+      const eyeY = centerY;
+      const eyeWidth = currentRadius * 0.3;
+      
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX - eyeOffset + eyeWidth / 2, eyeY);
+      ctx.moveTo(centerX + eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX + eyeOffset + eyeWidth / 2, eyeY);
+      ctx.stroke();
+    }
   }
 
   drawBossCollisionDebug(boss) {

@@ -169,6 +169,7 @@ export function updateEnemies({
   PROJECTILE_SPEED,
   spikedShoes = false,
   onBossDefeated,
+  debug999Damage = false,
 }) {
   for (let i = enemies.length - 1; i >= 0; i--) {
     const enemy = enemies[i];
@@ -185,6 +186,7 @@ export function updateEnemies({
         ACID_DEBUFF_DURATION,
         ACID_TICK_INTERVAL,
         enemyProjectiles,
+        debug999Damage,
       });
     } else {
     const attachToPlatform = (plat) => {
@@ -318,7 +320,7 @@ export function updateEnemies({
       while (enemy.acidTickTimer <= 0 && enemy.acidDuration > 0) {
         enemy.acidTickTimer += ACID_TICK_INTERVAL;
         const stackMultiplier = Math.max(1, enemy.acidStacks || 0);
-        const tickDamage = playerDamagePerTick() * stackMultiplier;
+        const tickDamage = debug999Damage ? 999 : (playerDamagePerTick() * stackMultiplier);
         enemy.health -= tickDamage;
         spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, tickDamage, `enemy-${enemy.id}`);
       }
@@ -344,6 +346,8 @@ export function updateEnemies({
     if (enemy.health <= 0) {
       if (enemy.isBoss) {
         onBossDefeated?.(enemy);
+        // Keep boss in array during defeat cinematic so it stays accessible
+        continue;
       } else {
         playEnemyDeathSound();
         spawnSlimeChunks(enemy);
@@ -457,7 +461,13 @@ function updateBossEnemy(enemy, dt, {
   ACID_DEBUFF_DURATION,
   ACID_TICK_INTERVAL,
   enemyProjectiles,
+  debug999Damage = false,
 }) {
+  // Instant boss defeat when 999 damage mode is active
+  if (debug999Damage && enemy.awake) {
+    enemy.health = 0;
+    return;
+  }
   if (!enemy.awake) {
     enemy.y = enemy.groundY - enemy.h;
     enemy.bossTimer = 0;

@@ -120,6 +120,10 @@ function update(dt) {
     statusEl.textContent = 'Game Over - press Y to continue';
     return;
   }
+  
+  // Always update cinematic even if paused (for defeat cinematic)
+  updateCinematic(dt);
+  
   if (state.paused) {
     statusEl.textContent = 'Paused - press Esc to continue';
     return;
@@ -130,7 +134,6 @@ function update(dt) {
     return;
   }
   checkBossSpawn();
-  updateCinematic(dt);
   state.slimeFlingCooldown -= dt;
   if (state.slimeFlingCooldown <= 0) {
     state.slimeFlingCooldown = 0;
@@ -200,6 +203,7 @@ function update(dt) {
     PROJECTILE_SPEED,
     spikedShoes: state.upgrades.spiked_shoes,
     onBossDefeated: handleBossDefeat,
+    debug999Damage: state.debug999Damage,
   });
   if (!state.bossFightActive) {
     checkTraps();
@@ -237,6 +241,7 @@ const uiManager = new UIManager({
     unlockAllAbilities: () => unlockAllAbilities(),
     travelDistance: () => travelDebugDistance(),
     forceShop: () => openDebugShop(),
+    toggle999Damage: () => toggle999Damage(),
   },
 });
 shopController.setAbilityListUpdater(() => uiManager.updateAbilityList());
@@ -331,6 +336,11 @@ function travelDebugDistance(amount = 9000) {
 function openDebugShop() {
   if (state.shopActive || state.bossFightActive || state.levelComplete) return;
   shopController.openShop(true);
+}
+
+function toggle999Damage() {
+  state.debug999Damage = !state.debug999Damage;
+  statusEl.textContent = `999 Damage Mode: ${state.debug999Damage ? 'ON' : 'OFF'}`;
 }
 
 function updateCamera() {
@@ -972,6 +982,13 @@ function startBossCinematic(boss) {
 
 function updateCinematic(dt) {
   state.cameraZoomTarget = state.cameraZoomTarget || 1;
+  
+  // Handle defeat cinematic
+  if (state.defeatCinematic) {
+    updateDefeatCinematic(dt);
+    return;
+  }
+  
   const cine = state.cinematic;
   if (!cine) {
     state.cameraZoomTarget = 1;
@@ -1064,18 +1081,302 @@ function getBossCameraX(boss) {
   return clamp(desired, 0, maxCameraX);
 }
 
-function handleBossDefeat() {
-  if (state.levelComplete) return;
-  audio.stopBossMusic?.();
-  audio.startMusic?.();
-  finishBossCinematic(true);
+function updateDefeatCinematic(dt) {
+  if (!state.defeatCinematic) return;
+  
+  const def = state.defeatCinematic;
+  // Use boss reference from defeat cinematic data, falls back to state.boss
+  let boss = state.boss;
+  if (!boss && def.bossRef) {
+    boss = def.bossRef;
+  }
+  
+  // Only need boss reference for phases before rain completes
+  if (!boss && def.phase !== 'rain') return;
+  
+  def.timer += dt;
+  
+  switch (def.phase) {
+    case 'pause': {
+      if (def.timer >= def.pauseDuration) {
+        console.log('⏸️  PAUSE COMPLETE → PAN PHASE');
+        def.phase = 'pan';
+        def.timer = 0;
+      }
+      break;
+    }
+    
+    case 'pan': {
+      const progress = Math.min(1, def.timer / def.panDuration);
+      const currentZoom = lerp(1, 1.3, progress);
+      const zoomedCanvasWidth = canvas.width / currentZoom;
+      
+      const maxCameraX = Math.max(0, world.width - zoomedCanvasWidth);
+      const bossCenter = boss.x + boss.w / 2;
+      const targetCam = clamp(bossCenter - zoomedCanvasWidth / 2, 0, maxCameraX);
+      
+      state.cinematicCameraX = lerp(camera.x, targetCam, progress);
+      state.cameraZoomTarget = currentZoom;
+      
+      if (def.timer >= def.panDuration) {
+        console.log('🎬 PAN COMPLETE → MORPH PHASE');
+        def.phase = 'morph';
+        def.timer = 0;
+        boss.defeatMorphMode = 'amoeba';
+      }
+      break;
+    }
+    
+    case 'morph': {
+      const progress = Math.min(1, def.timer / def.morphDuration);
+      boss.defeatMorphProgress = progress;
+      
+      if (def.timer >= def.morphDuration) {
+        console.log('🌊 MORPH COMPLETE → SWELL PHASE');
+        def.phase = 'swell';
+        def.timer = 0;
+      }
+      break;
+    }
+    
+    case 'swell': {
+      const progress = Math.min(1, def.timer / def.swellDuration);
+      boss.defeatSwellProgress = progress;
+      
+      if (def.timer >= def.swellDuration) {
+        console.log('💥 SWELL COMPLETE → EXPLOSION PHASE');
+        def.phase = 'explosion';
+        def.timer = 0;
+        triggerBossExplosion(def, boss);
+      }
+      break;
+    }
+    
+    case 'explosion': {
+      if (state.whiteFlash) {
+        state.whiteFlash.timer += dt;
+        if (state.whiteFlash.timer >= state.whiteFlash.duration) {
+          state.whiteFlash = null;
+        }
+      }
+      
+      if (def.timer >= def.explosionDuration) {
+        console.log('✨ EXPLOSION COMPLETE → RAIN PHASE (Game Resume)');
+        def.phase = 'rain';
+        def.timer = 0;
+        boss.dead = true;
+        boss.invisible = true;
+        player.health = player.maxHealth;
+        playerManager.applyScale();
+        spawnDefeatRain(def);
+      }
+      break;
+    }
+    
+    case 'rain': {
+      // Initialize camera reset on first rain frame
+      if (!def.rainStarted) {
+        def.rainStarted = true;
+        console.log('🌧️  RAIN STARTED - Boss deleted from game');
+        // Remove boss from enemies array
+        const bossIndex = enemies.findIndex(e => e.id === boss.id);
+        if (bossIndex !== -1) {
+          enemies.splice(bossIndex, 1);
+        }
+        // Clear boss reference
+        state.boss = null;
+        // Set camera reset targets (zoom back out and pan to player)
+        state.cameraZoomTarget = 1;
+        def.rainCameraResetDuration = 0.8; // 0.8 seconds to reset camera
+        def.rainCameraResetTimer = 0;
+        // Resume the game
+        state.paused = false;
+        console.log('▶️  GAME RESUMED - Resetting camera...');
+      }
+      
+      // Reset camera during first part of rain phase
+      if (def.rainCameraResetTimer < (def.rainCameraResetDuration || 0)) {
+        def.rainCameraResetTimer += dt;
+        const cameraResetProgress = Math.min(1, def.rainCameraResetTimer / def.rainCameraResetDuration);
+        
+        // Pan camera back to player
+        const playerCameraX = player.x + player.w / 2 - canvas.width / 2;
+        const maxCameraX = Math.max(0, world.width - canvas.width);
+        const targetCameraX = clamp(playerCameraX, 0, maxCameraX);
+        
+        state.cinematicCameraX = lerp(state.cinematicCameraX || camera.x, targetCameraX, cameraResetProgress);
+      } else {
+        // After reset completes, release cinematic camera control
+        state.cinematicCameraX = null;
+        console.log('📹 Camera reset complete - Back to player');
+      }
+      
+      // Spawn rain items gradually throughout the rain phase
+      def.rainSpawnTimer += dt;
+      const itemsToSpawn = Math.floor(def.rainSpawnTimer * def.rainSpawnRate);
+      if (itemsToSpawn > 0) {
+        console.log(`🌧️  Rain phase: spawning ${itemsToSpawn} items (timer: ${def.rainSpawnTimer.toFixed(2)}, rate: ${def.rainSpawnRate.toFixed(2)})`);
+        for (let i = 0; i < itemsToSpawn; i++) {
+          spawnSingleRainItem(def);
+        }
+        def.rainSpawnTimer -= itemsToSpawn / def.rainSpawnRate;
+      }
+      
+      updateDefeatRain(def, dt);
+      
+      if (def.timer >= def.rainDuration) {
+        console.log('🎉 RAIN COMPLETE → LEVEL COMPLETE');
+        finishDefeatCinematic();
+      }
+      break;
+    }
+  }
+  
+  state.cameraZoom += (state.cameraZoomTarget - state.cameraZoom) * Math.min(1, dt * 5);
+}
+
+function triggerBossExplosion(def, boss) {
+  state.whiteFlash = { timer: 0, duration: 0.15 };
+  
+  const particleCount = 40;
+  const centerX = boss.x + boss.w / 2;
+  const centerY = boss.y + boss.h / 2;
+  
+  for (let i = 0; i < particleCount; i++) {
+    const angle = (Math.random() * Math.PI * 2);
+    const speed = 200 + Math.random() * 400;
+    def.explosionParticles.push({
+      x: centerX,
+      y: centerY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.8,
+      maxLife: 0.8,
+      size: 4 + Math.random() * 8,
+      color: '#20d9d9',
+    });
+  }
+}
+
+function spawnDefeatRain(def) {
+  console.log('📧 spawnDefeatRain called - spawning 5 initial items');
+  // Spawn initial items spread across the width
+  for (let i = 0; i < 5; i++) {
+    spawnSingleRainItem(def);
+  }
+  console.log(`   Total rain items after initial spawn: ${def.rainItems.length}`);
+}
+
+function spawnSingleRainItem(def) {
+  const isChunk = Math.random() > 0.6;
+  const x = Math.random() * (canvas.width - 40) + 20;
+  
+  const item = {
+    type: isChunk ? 'chunk' : 'coin',
+    x,
+    y: -50,
+    w: isChunk ? 18 : 16,
+    h: isChunk ? 14 : 16,
+    vx: (Math.random() - 0.5) * 100,
+    vy: 50,
+    life: 20,
+  };
+  
+  def.rainItems.push(item);
+  console.log(`✨ Spawned ${item.type} at x=${Math.round(x)}, y=${item.y}, vx=${item.vx.toFixed(1)}, vy=${item.vy}, life=${item.life}s, total items: ${def.rainItems.length}`);
+}
+
+function updateDefeatRain(def, dt) {
+  const initialCount = def.rainItems.length;
+  const initialParticles = def.explosionParticles.length;
+  
+  for (let i = def.rainItems.length - 1; i >= 0; i--) {
+    const item = def.rainItems[i];
+    item.vy += world.gravity * 0.8 * dt;
+    item.y += item.vy * dt;
+    item.x += item.vx * dt;
+    item.life -= dt;
+    
+    // Check collision with player
+    if (overlap(player, item)) {
+      if (item.type === 'chunk') {
+        // Chunks increase max health
+        player.maxHealth += 10;
+        player.health = Math.min(player.health + 10, player.maxHealth);
+        playChunkSound();
+      } else if (item.type === 'coin') {
+        // Coins add money
+        state.coins += 5;
+        playCoinSound();
+      }
+      def.rainItems.splice(i, 1);
+      continue;
+    }
+    
+    if (item.life <= 0) {
+      def.rainItems.splice(i, 1);
+    }
+  }
+  
+  for (let i = def.explosionParticles.length - 1; i >= 0; i--) {
+    const p = def.explosionParticles[i];
+    p.vy += world.gravity * 0.6 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    
+    if (p.life <= 0) {
+      def.explosionParticles.splice(i, 1);
+    }
+  }
+  
+  if (initialCount > 0 || initialParticles > 0) {
+    console.log(`   Rain items: ${def.rainItems.length} (was ${initialCount}), Particles: ${def.explosionParticles.length} (was ${initialParticles})`);
+  }
+}
+
+function finishDefeatCinematic() {
+  console.log('🏆 LEVEL COMPLETE - Sanctuary Secured');
+  state.defeatCinematic = null;
+  state.cinematicCameraX = null;
+  state.cameraZoomTarget = 1;
+  state.cameraZoom = 1;
   state.boss = null;
   state.bossDefeated = true;
   state.bossFightActive = false;
   state.levelComplete = true;
   state.levelCompleteTimer = 0;
+  state.paused = false;
   uiManager.setLevelCompleteVisible(true);
   statusEl.textContent = 'Level Complete - press Play Again';
+  audio.startMusic?.();
+}
+
+function handleBossDefeat() {
+  if (state.levelComplete || state.defeatCinematic) return;
+  console.log('🔴 BOSS DEFEAT TRIGGERED');
+  audio.stopBossMusic?.();
+  state.paused = true;
+  const bossRef = state.boss;
+  state.defeatCinematic = {
+    phase: 'pause',
+    timer: 0,
+    pauseDuration: 0.4,
+    panDuration: 1.2,
+    morphDuration: 1.5,
+    swellDuration: 1.0,
+    explosionDuration: 0.3,
+    rainDuration: 15,
+    rainStartY: -100,
+    rainSpawnRate: 40 / 15, // 40 items over 15 seconds = ~2.67 per second
+    rainSpawnTimer: 0,
+    explosionParticles: [],
+    rainItems: [],
+    bossRef: bossRef,
+    bossStartX: bossRef?.x ?? 0,
+    bossStartY: bossRef?.y ?? 0,
+    playerStartX: player.x,
+  };
 }
 
 function resetBossState() {

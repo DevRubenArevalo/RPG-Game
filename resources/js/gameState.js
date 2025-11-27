@@ -71,6 +71,7 @@ export class GameState {
     this.godModePrevHealth = null;
     this.debugShowCollisions = false;
     this.debugShowBossStats = false;
+    this.debug999Damage = false;
     this.deathMessage = null;
   }
 }
