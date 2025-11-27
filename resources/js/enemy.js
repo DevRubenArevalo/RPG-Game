@@ -133,6 +133,8 @@ export function createBossEnemy({ canvas, world, player }) {
     morphBlend: 0,
     stompPending: false,
     stompRecoverTimer: 0,
+    invulnerabilityTimer: 0,
+    lastHealthBar: 4, // Track which health bar was last (for detecting depletions)
   });
 }
 
@@ -426,6 +428,18 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
   }
 }
 
+/**
+ * Calculate boss difficulty level (1-4) based on missing health bars
+ * Level increases by 1 for each full health bar missing (1/4, 2/4, 3/4 of max)
+ * @param {object} enemy - Boss enemy with health and maxHealth
+ * @returns {number} Difficulty level 1-4
+ */
+function getBossDifficultyLevel(enemy) {
+  const healthPerBar = enemy.maxHealth / 4; // 4 bars per boss
+  const barsMissing = Math.floor((enemy.maxHealth - enemy.health) / healthPerBar);
+  return Math.min(4, 1 + barsMissing);
+}
+
 function updateBossEnemy(enemy, dt, {
   player,
   world,
@@ -445,6 +459,17 @@ function updateBossEnemy(enemy, dt, {
   }
   updateBossMorph(enemy, dt);
   enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
+  
+  // Check for health bar depletion and trigger invulnerability
+  const currentHealthBar = Math.ceil(enemy.health / (enemy.maxHealth / 4));
+  if (currentHealthBar < enemy.lastHealthBar) {
+    enemy.invulnerabilityTimer = 10; // 10 second invulnerability
+  }
+  enemy.lastHealthBar = currentHealthBar;
+  
+  // Update invulnerability timer
+  enemy.invulnerabilityTimer = Math.max(0, (enemy.invulnerabilityTimer || 0) - dt);
+  
   enemy.bossTimer += dt;
   enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);
   switch (enemy.bossPhase) {
@@ -456,7 +481,10 @@ function updateBossEnemy(enemy, dt, {
       }
       break;
     case 'jump': {
-      const progress = Math.min(1, enemy.bossTimer / enemy.bossJumpDuration);
+      const difficulty = getBossDifficultyLevel(enemy);
+      const speedMultiplier = difficulty === 1 ? 1 : difficulty === 2 ? 1 : difficulty === 3 ? 1.5 : 1.75;
+      const adjustedJumpDuration = enemy.bossJumpDuration / speedMultiplier;
+      const progress = Math.min(1, enemy.bossTimer / adjustedJumpDuration);
       const eased = 1 - Math.pow(1 - progress, 2);
       enemy.x = clamp(
         enemy.jumpStartX + (enemy.jumpTargetX - enemy.jumpStartX) * eased,
@@ -508,6 +536,9 @@ function updateBossEnemy(enemy, dt, {
         spawnShockwaveProjectiles(enemy, enemyProjectiles);
         enemy.bossPhase = 'stompRecover';
         ensureBossMorph(enemy, 'circle');
+      } else {
+        // Process projectile spawn queue while in stompDrop phase
+        processProjectileSpawnQueue(enemy, enemyProjectiles, dt);
       }
       break;
     case 'stompRecover':
@@ -611,30 +642,111 @@ function applyBossPoison(
 }
 
 function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
-  const height = 18;
-  const width = 36;
-  const speed = 420;
+  const difficulty = getBossDifficultyLevel(enemy);
+  
+  const baseHeight = 18;
+  const baseWidth = 36;
+  const baseSpeed = 420;
+  
+  // Height scales: 1x at L1, 1x at L2, 4x at L3, 4x at L4
+  const heightMultiplier = difficulty === 1 || difficulty === 2 ? 1 : 4;
+  const height = baseHeight * heightMultiplier;
+  
+  // Width scales with height to maintain aspect
+  const width = baseWidth * heightMultiplier;
+  const speed = baseSpeed;
   const y = enemy.groundY - height;
   const center = enemy.x + enemy.w / 2;
-  const base = {
+  
+  // Base projectile template
+  const createProjectile = (x, vx) => ({
+    x,
     y,
     w: width,
     h: height,
+    vx,
     vy: 0,
     damage: 4,
     ignoreGround: true,
     type: 'shockwave',
-  };
-  enemyProjectiles.push({
-    ...base,
-    x: center - width,
-    vx: -speed,
   });
-  enemyProjectiles.push({
-    ...base,
-    x: center,
-    vx: speed,
-  });
+  
+  // Level 1: Just jump, no stomp projectiles
+  if (difficulty <= 1) {
+    return;
+  }
+  
+  // Level 2: 1 projectile immediately
+  if (difficulty === 2) {
+    enemyProjectiles.push(createProjectile(center - width, -speed));
+    enemyProjectiles.push(createProjectile(center, speed));
+    return;
+  }
+  
+  // Level 3 & 4: Use enemy's projectile spawn queue system
+  if (difficulty >= 3) {
+    if (!enemy.projectileSpawnQueue) {
+      enemy.projectileSpawnQueue = [];
+    }
+    
+    // Level 3: 2 waves (immediate and +0.3s)
+    if (difficulty === 3) {
+      // Wave 1: immediate
+      enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
+        createProjectile(center - width, -speed),
+        createProjectile(center, speed),
+      ]});
+      // Wave 2: +0.3s
+      enemy.projectileSpawnQueue.push({ delay: 0.3, projectiles: [
+        createProjectile(center - width, -speed),
+        createProjectile(center, speed),
+      ]});
+    }
+    
+    // Level 4: 3 waves (immediate, +0.2s, +0.4s)
+    if (difficulty >= 4) {
+      // Wave 1: immediate
+      enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
+        createProjectile(center - width, -speed),
+        createProjectile(center, speed),
+      ]});
+      // Wave 2: +0.2s
+      enemy.projectileSpawnQueue.push({ delay: 0.2, projectiles: [
+        createProjectile(center - width, -speed),
+        createProjectile(center, speed),
+      ]});
+      // Wave 3: +0.4s
+      enemy.projectileSpawnQueue.push({ delay: 0.4, projectiles: [
+        createProjectile(center - width, -speed),
+        createProjectile(center, speed),
+      ]});
+    }
+    
+    // Process the queue immediately for 0-delay items
+    processProjectileSpawnQueue(enemy, enemyProjectiles);
+  }
+}
+
+/**
+ * Process enemy's projectile spawn queue, tracking delays in game time
+ */
+function processProjectileSpawnQueue(enemy, enemyProjectiles, dt = 0) {
+  if (!enemy.projectileSpawnQueue || enemy.projectileSpawnQueue.length === 0) return;
+  
+  if (!enemy.projectileSpawnTimer) {
+    enemy.projectileSpawnTimer = 0;
+  }
+  
+  enemy.projectileSpawnTimer += dt;
+  
+  // Remove and spawn any projectiles whose delay has been reached
+  for (let i = enemy.projectileSpawnQueue.length - 1; i >= 0; i--) {
+    const item = enemy.projectileSpawnQueue[i];
+    if (enemy.projectileSpawnTimer >= item.delay) {
+      item.projectiles.forEach(proj => enemyProjectiles.push(proj));
+      enemy.projectileSpawnQueue.splice(i, 1);
+    }
+  }
 }
 
 function ensureBossMorph(enemy, target) {

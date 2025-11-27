@@ -632,6 +632,51 @@ export class Renderer {
       this.drawHealthBar(boss.x + boss.w / 2, rowY, chunkVal, chunkMax);
       rowY -= 18;
     }
+    // Draw invulnerability buff if active
+    if (boss.invulnerabilityTimer > 0) {
+      this.drawBossInvulnerabilityBuff(boss);
+    }
+  }
+
+  drawBossInvulnerabilityBuff(boss) {
+    const { ctx } = this;
+    const barWidth = 40;
+    const barHeight = 16;
+    const x = boss.x + boss.w / 2 + barWidth + 10;
+    const y = boss.y - 24 - (4 * 18) / 2 - barHeight / 2; // Center with health bars
+    
+    // Draw shield icon
+    const shieldSize = 12;
+    const shieldX = x - 20;
+    const shieldY = y + barHeight / 2 - shieldSize / 2;
+    
+    ctx.save();
+    ctx.fillStyle = 'rgba(80, 147, 255, 0.8)';
+    // Draw shield shape (simplified rectangle with border)
+    ctx.fillRect(shieldX - shieldSize / 2, shieldY, shieldSize, shieldSize);
+    ctx.strokeStyle = 'rgba(100, 180, 255, 1)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(shieldX - shieldSize / 2, shieldY, shieldSize, shieldSize);
+    
+    // Draw cooldown bar
+    const progress = boss.invulnerabilityTimer / 10;
+    ctx.fillStyle = 'rgba(80, 147, 255, 0.3)';
+    ctx.fillRect(x, y, barWidth, barHeight);
+    ctx.strokeStyle = 'rgba(100, 180, 255, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, barWidth, barHeight);
+    
+    // Draw filled portion
+    ctx.fillStyle = 'rgba(80, 147, 255, 0.8)';
+    ctx.fillRect(x, y, barWidth * progress, barHeight);
+    
+    // Draw time text
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(boss.invulnerabilityTimer.toFixed(1), x + barWidth / 2, y + barHeight + 10);
+    
+    ctx.restore();
   }
 
   drawBossRoarWave(boss) {

@@ -793,8 +793,11 @@ if (removed) continue;
       for (let j = enemies.length - 1; j >= 0; j--) {
         const enemy = enemies[j];
         if (overlap(enemy, proj)) {
-          enemy.health -= proj.damage ?? 1;
-          spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, proj.damage ?? 1, `enemy-${enemy.id}`);
+          // Don't damage boss if invulnerable
+          if (!(enemy.isBoss && enemy.invulnerabilityTimer > 0)) {
+            enemy.health -= proj.damage ?? 1;
+            spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, proj.damage ?? 1, `enemy-${enemy.id}`);
+          }
           if (enemy.health <= 0) {
             playEnemyDeathSound();
             spawnSlimeChunks(enemy);
