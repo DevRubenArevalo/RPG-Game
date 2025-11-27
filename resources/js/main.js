@@ -92,6 +92,7 @@ const ACID_TICK_INTERVAL = ACID_VALUES.tickInterval;
 const ACID_DEBUFF_DURATION = ACID_VALUES.debuffDuration;
 const MARKER_SPACING = CONSTANTS.level.markerSpacing;
 const PLATFORM_UNIT = CONSTANTS.level.platformUnit;
+const PLATFORM_SEAM_EPSILON = 0.8;
 const worldController = new WorldController({
   state,
   player,
@@ -102,7 +103,7 @@ const worldController = new WorldController({
   playerDamagePerTick,
   playCorrosionSound,
 });
-const BOSS_TRIGGER_DISTANCE = 10000;
+const BOSS_TRIGGER_DISTANCE = 20000;
 function lerp(a, b, t) {
   const clamped = Math.min(Math.max(t, 0), 1);
   return a + (b - a) * clamped;
@@ -204,6 +205,7 @@ function update(dt) {
   }
   updateDamageNumbers(dt);
   worldController.cleanupOldEntities();
+  updatePlatformDebugInfo();
 }
 
 gameOverYesButton?.addEventListener('click', () => {
@@ -283,12 +285,26 @@ function togglePause(force) {
   if (state.paused) {
     keys.clear();
     statusEl.textContent = 'Paused - press Esc to continue';
+  } else {
+    state.platformPauseActive = false;
   }
 }
 
 function toggleGodMode(force) {
   const next = typeof force === 'boolean' ? force : !state.godMode;
+  if (state.godMode === next) return;
   state.godMode = next;
+  if (next) {
+    state.godModePrevHealth = state.godModePrevHealth ?? player.health;
+    player.health = player.maxHealth;
+    playerManager.applyScale();
+  } else {
+    if (state.godModePrevHealth != null) {
+      player.health = Math.min(player.maxHealth, state.godModePrevHealth);
+    }
+    state.godModePrevHealth = null;
+    playerManager.applyScale();
+  }
 }
 
 function addDebugCoins(amount = 1000) {
@@ -326,6 +342,10 @@ function updateCamera() {
   camera.x = clamp(desired, 0, maxCameraX);
 }
 
+function updatePlatformDebugInfo() {
+  state.lastPlatformStats = null;
+}
+
 function getSlimeTrailScale() {
   return Math.max(0.35, player.health / player.maxHealth);
 }
@@ -349,7 +369,11 @@ function resolvePlatformCollisions(playerEntity) {
       if (playerEntity.x + playerEntity.w <= plat.x || playerEntity.x >= plat.x + plat.w) {
         continue;
       }
-      if (playerEntity.vy >= 0 && prevBottom <= plat.y && bottom >= plat.y) {
+      if (
+        playerEntity.vy >= 0 &&
+        prevBottom <= plat.y + PLATFORM_SEAM_EPSILON &&
+        bottom >= plat.y - PLATFORM_SEAM_EPSILON
+      ) {
         playerEntity.y = plat.y - playerEntity.h;
         playerEntity.vy = 0;
         grounded = true;
@@ -743,8 +767,13 @@ function updateEnemyProjectiles(dt) {
 }
 if (removed) continue;
     if (proj.y + proj.h >= world.groundY) {
-      enemyProjectiles.splice(i, 1);
-      continue;
+      if (proj.ignoreGround) {
+        proj.y = world.groundY - proj.h;
+        proj.vy = 0;
+      } else {
+        enemyProjectiles.splice(i, 1);
+        continue;
+      }
     }
 
     if (proj.reflected) {
@@ -883,7 +912,7 @@ function checkBossSpawn() {
 }
 
 function spawnBoss() {
-  const boss = createBossEnemy({ canvas, world, player, camera });
+  const boss = createBossEnemy({ canvas, world, player });
   state.boss = boss;
   state.bossFightActive = true;
   state.bossDefeated = false;
@@ -1184,6 +1213,20 @@ function resetGame(toHome = false) {
     state.homeScreenActive = false;
     uiManager.setHomeScreenVisible(false);
     audio.startMusic?.();
+  }
+}
+
+function triggerBossCinematicTeleport() {
+  if (state.gameOver || state.levelComplete) return;
+  player.x = 20000;
+  player.prevX = player.x;
+  player.prevY = player.y;
+  player.farthest = Math.max(player.farthest, player.x);
+  playerManager.resetMovementState();
+  resolvePlatformCollisions(player);
+  checkBossSpawn();
+  if (!state.bossFightActive) {
+    spawnBoss();
   }
 }
 

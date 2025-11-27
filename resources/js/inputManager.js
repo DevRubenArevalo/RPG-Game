@@ -8,6 +8,7 @@ export class InputManager {
     gameOverManager,
     toggleMovementOverlay,
     toggleDebugMenu,
+    triggerBossCutscene = null,
   }) {
     this.state = gameState;
     this.player = player;
@@ -17,6 +18,7 @@ export class InputManager {
     this.gameOverManager = gameOverManager;
     this.toggleMovementOverlay = toggleMovementOverlay;
     this.toggleDebugMenu = toggleDebugMenu;
+    this.triggerBossCutscene = triggerBossCutscene;
     this.arrowKeys = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
@@ -54,6 +56,16 @@ export class InputManager {
     }
     if (key === 'h') {
       player.coins += 100;
+      return;
+    }
+    if (key === 'l') {
+      if (player.x < 20000) {
+        player.x = 20000;
+        player.prevX = player.x;
+        player.prevY = player.y;
+        player.farthest = Math.max(player.farthest, player.x);
+      }
+      this.triggerBossCutscene?.();
       return;
     }
     if (key === 'j') {

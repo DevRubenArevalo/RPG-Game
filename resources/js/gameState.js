@@ -67,5 +67,7 @@ export class GameState {
     this.cinematic = null;
     this.cinematicCameraX = null;
     this.bossRoarWave = null;
+    this.lastPlatformStats = null;
+    this.godModePrevHealth = null;
   }
 }

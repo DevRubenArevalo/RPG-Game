@@ -430,16 +430,22 @@ export class Renderer {
     const baseColor = boss.color || '#35d0ba';
     const flashAlpha = boss.hitFlash ? Math.min(1, boss.hitFlash * 4) : 0;
     const fillColor = flashAlpha > 0 ? `rgba(255, 255, 255, ${flashAlpha})` : baseColor;
-    ctx.fillStyle = fillColor;
+    const blend = Math.max(0, Math.min(1, boss.morphBlend ?? (boss.morphMode === 'square' ? 1 : 0)));
+    const radius = (boss.w / 2) * (1 - blend);
     const centerX = boss.x + boss.w / 2;
     const centerY = boss.y + boss.h / 2;
-    ctx.beginPath();
-    ctx.ellipse(centerX, centerY, boss.w / 2, boss.h / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = fillColor;
+    this.drawRoundedRect(ctx, boss.x, boss.y, boss.w, boss.h, radius);
     ctx.fillStyle = 'rgba(45, 147, 122, 0.85)';
-    ctx.beginPath();
-    ctx.ellipse(centerX, centerY - boss.h * 0.18, boss.w / 3, boss.h / 3.4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    const inset = 0.15 - blend * 0.05;
+    this.drawRoundedRect(
+      ctx,
+      boss.x + boss.w * inset,
+      boss.y + boss.h * inset,
+      boss.w * (1 - inset * 2),
+      boss.h * (1 - inset * 2),
+      Math.max(4, radius * 0.6),
+    );
     ctx.strokeStyle = '#0b1f1c';
     ctx.lineWidth = Math.max(6, boss.h * 0.04);
     ctx.lineCap = 'round';
@@ -465,8 +471,8 @@ export class Renderer {
 
   drawBossHealthBarsWorld(boss) {
     if (!boss) return;
-    const rows = 2;
-    const perRow = Math.ceil((boss.maxHealth || 80) / rows);
+    const rows = 4;
+    const perRow = Math.ceil((boss.maxHealth || 160) / rows);
     let rowY = boss.y - 24;
     for (let i = 0; i < rows; i++) {
       const chunkStart = i * perRow;
@@ -498,6 +504,26 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  drawRoundedRect(ctx, x, y, width, height, radius) {
+    const r = Math.max(0, Math.min(Math.min(width, height) / 2, radius || 0));
+    if (r <= 0) {
+      ctx.fillRect(x, y, width, height);
+      return;
+    }
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
   }
 
 }

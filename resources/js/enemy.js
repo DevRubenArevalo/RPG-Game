@@ -17,7 +17,7 @@ export const ENEMY_CONFIG = {
 
 const BOSS_CONFIG = {
   sizeRatio: 0.6,
-  health: 80,
+  health: 160,
   windup: 2.4,
   jumpDuration: 1.8,
   recoverDuration: 1.2,
@@ -86,14 +86,12 @@ export function createEnemy({
   });
 }
 
-export function createBossEnemy({ canvas, world, player, camera }) {
+export function createBossEnemy({ canvas, world, player }) {
   const size = canvas.height * BOSS_CONFIG.sizeRatio;
   const offset = canvas.width + 200;
-  const spawnX = clamp(
-    player.x + offset,
-    camera.x + canvas.width + 120,
-    Math.max(0, world.width - size - 40),
-  );
+  const spawnTarget = player.x + offset;
+  const maxX = Math.max(0, world.width - size - 40);
+  const spawnX = Math.min(spawnTarget, maxX);
   const spawnY = world.groundY - size;
   const jumpHeight = canvas.height * BOSS_CONFIG.jumpHeightRatio;
   const jumpDistance = canvas.width * BOSS_CONFIG.jumpDistanceRatio;
@@ -122,9 +120,19 @@ export function createBossEnemy({ canvas, world, player, camera }) {
     poisonCooldown: 0,
     poisonInterval: BOSS_CONFIG.poisonInterval,
     poisonStacks: 0,
+    acidStacks: 0,
+    acidDuration: 0,
+    acidTickTimer: 0.5,
+    acidStackTimer: 0,
     regenRate: BOSS_CONFIG.regenRate,
     eyeOffset: size * 0.18,
     awake: false,
+    morphMode: 'circle',
+    morphTimer: 0,
+    morphDuration: 0.25,
+    morphBlend: 0,
+    stompPending: false,
+    stompRecoverTimer: 0,
   });
 }
 
@@ -165,6 +173,9 @@ export function updateEnemies({
         slimeGlobs,
         playerDamagePerTick,
         spawnDamageNumber,
+        ACID_DEBUFF_DURATION,
+        ACID_TICK_INTERVAL,
+        enemyProjectiles,
       });
     } else {
     const attachToPlatform = (plat) => {
@@ -422,6 +433,9 @@ function updateBossEnemy(enemy, dt, {
   slimeGlobs,
   playerDamagePerTick,
   spawnDamageNumber,
+  ACID_DEBUFF_DURATION,
+  ACID_TICK_INTERVAL,
+  enemyProjectiles,
 }) {
   if (!enemy.awake) {
     enemy.y = enemy.groundY - enemy.h;
@@ -429,12 +443,14 @@ function updateBossEnemy(enemy, dt, {
     enemy.bossPhase = 'idle';
     return;
   }
+  updateBossMorph(enemy, dt);
   enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
   enemy.bossTimer += dt;
   enemy.hitFlash = Math.max(0, (enemy.hitFlash || 0) - dt);
   switch (enemy.bossPhase) {
     case 'windup':
       enemy.y = enemy.groundY - enemy.h;
+      ensureBossMorph(enemy, 'circle');
       if (enemy.bossTimer >= enemy.bossWindup) {
         startBossJump(enemy, player, world);
       }
@@ -449,23 +465,81 @@ function updateBossEnemy(enemy, dt, {
       );
       const arc = Math.sin(progress * Math.PI) * enemy.jumpHeight;
       enemy.y = enemy.groundY - enemy.h - arc;
+      const bossCenter = enemy.x + enemy.w / 2;
+      const playerCenter = player.x + player.w / 2;
+      const aligned = Math.abs(bossCenter - playerCenter) <= enemy.w * 0.35;
+      ensureBossMorph(enemy, 'circle');
+      if (
+        aligned &&
+        !enemy.stompPending &&
+        progress >= 0.35 &&
+        progress <= 0.65
+      ) {
+        enemy.stompPending = true;
+        enemy.bossPhase = 'stompPrep';
+        ensureBossMorph(enemy, 'square');
+        enemy.x = clamp(playerCenter - enemy.w / 2, 0, Math.max(0, world.width - enemy.w));
+        enemy.y = enemy.groundY - enemy.h - enemy.jumpHeight;
+        break;
+      }
       if (progress >= 1) {
         enemy.bossPhase = 'recover';
         enemy.bossTimer = 0;
         enemy.y = enemy.groundY - enemy.h;
+        enemy.stompPending = false;
+        ensureBossMorph(enemy, 'circle');
       }
       break;
     }
+    case 'stompPrep':
+      enemy.y = enemy.groundY - enemy.h - enemy.jumpHeight;
+      ensureBossMorph(enemy, 'square');
+      if (isBossMorphComplete(enemy, 'square')) {
+        enemy.bossPhase = 'stompDrop';
+        enemy.vy = 0;
+      }
+      break;
+    case 'stompDrop':
+      enemy.vy = (enemy.vy || 0) + world.gravity * 2.2 * dt;
+      enemy.y += enemy.vy * dt;
+      if (enemy.y + enemy.h >= enemy.groundY) {
+        enemy.y = enemy.groundY - enemy.h;
+        enemy.vy = 0;
+        spawnShockwaveProjectiles(enemy, enemyProjectiles);
+        enemy.bossPhase = 'stompRecover';
+        ensureBossMorph(enemy, 'circle');
+      }
+      break;
+    case 'stompRecover':
+      enemy.y = enemy.groundY - enemy.h;
+      ensureBossMorph(enemy, 'circle');
+      if (isBossMorphComplete(enemy, 'circle')) {
+        enemy.stompPending = false;
+        enemy.bossPhase = 'recover';
+        enemy.bossTimer = 0;
+      }
+      break;
     case 'recover':
     default:
       enemy.y = enemy.groundY - enemy.h;
+      ensureBossMorph(enemy, 'circle');
       if (enemy.bossTimer >= enemy.bossRecoverDuration) {
         enemy.bossPhase = 'windup';
         enemy.bossTimer = 0;
       }
+      enemy.stompPending = false;
       break;
   }
-  applyBossPoison(enemy, dt, trailSegments, slimeGlobs, playerDamagePerTick, spawnDamageNumber);
+  applyBossPoison(
+    enemy,
+    dt,
+    trailSegments,
+    slimeGlobs,
+    playerDamagePerTick,
+    spawnDamageNumber,
+    ACID_DEBUFF_DURATION,
+    ACID_TICK_INTERVAL,
+  );
 }
 
 function startBossJump(enemy, player, world) {
@@ -479,31 +553,141 @@ function startBossJump(enemy, player, world) {
   enemy.jumpTargetX = clamp(desired, 0, Math.max(0, world.width - enemy.w));
 }
 
-function applyBossPoison(enemy, dt, trailSegments, slimeGlobs, playerDamagePerTick, spawnDamageNumber) {
-  let stacks = 0;
+function applyBossPoison(
+  enemy,
+  dt,
+  trailSegments,
+  slimeGlobs,
+  playerDamagePerTick,
+  spawnDamageNumber,
+  ACID_DEBUFF_DURATION,
+  ACID_TICK_INTERVAL,
+) {
+  const interval = ACID_TICK_INTERVAL || 0.5;
+  const duration = ACID_DEBUFF_DURATION || 3;
+  let touchingCount = 0;
   for (const seg of trailSegments) {
-    if (stacks >= 2) break;
-    if (overlap(enemy, seg)) {
-      stacks += 1;
+    if (seg.life > 0 && overlap(enemy, seg)) {
+      touchingCount += 1;
     }
   }
   for (const glob of slimeGlobs) {
-    if (overlap(enemy, glob)) {
+    if (glob.life > 0 && overlap(enemy, glob)) {
+      touchingCount += 1;
       glob.life -= dt * 2;
-      if (stacks < 2) {
-        stacks += 1;
-      }
     }
-    if (stacks >= 2) break;
   }
-  enemy.poisonStacks = Math.min(2, Math.max(enemy.poisonStacks || 0, stacks));
-  enemy.poisonCooldown = Math.max(0, (enemy.poisonCooldown ?? 0) - dt);
-  if (enemy.poisonCooldown <= 0 && (enemy.poisonStacks || 0) > 0) {
-    const damage = playerDamagePerTick() * enemy.poisonStacks;
-    enemy.health = Math.max(0, enemy.health - damage);
-    enemy.hitFlash = 0.2;
-    spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, damage, `boss-poison`);
-    enemy.poisonStacks = 0;
-    enemy.poisonCooldown = enemy.poisonInterval || BOSS_CONFIG.poisonInterval;
+  if (touchingCount > 0) {
+    if (!enemy.acidStacks || enemy.acidStacks < 1) {
+      enemy.acidStacks = 1;
+      enemy.acidStackTimer = 0;
+    }
+    enemy.acidStackTimer = (enemy.acidStackTimer || 0) + touchingCount * dt;
+    while (enemy.acidStacks < 2 && enemy.acidStackTimer >= interval) {
+      enemy.acidStackTimer -= interval;
+      enemy.acidStacks += 1;
+    }
+    enemy.acidDuration = duration;
+  } else {
+    enemy.acidDuration = Math.max(0, (enemy.acidDuration || 0) - dt);
+    enemy.acidStackTimer = 0;
+    if ((enemy.acidDuration || 0) <= 0) {
+      enemy.acidStacks = 0;
+    }
+  }
+  if ((enemy.acidDuration || 0) > 0 && (enemy.acidStacks || 0) > 0) {
+    enemy.acidTickTimer = (enemy.acidTickTimer ?? interval) - dt;
+    while (enemy.acidTickTimer <= 0 && enemy.acidDuration > 0) {
+      enemy.acidTickTimer += interval;
+      const stackMultiplier = Math.max(1, enemy.acidStacks || 0);
+      const damage = playerDamagePerTick() * stackMultiplier * 0.5;
+      enemy.health = Math.max(0, enemy.health - damage);
+      enemy.hitFlash = Math.max(0.2, enemy.hitFlash || 0);
+      spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, damage, 'boss-poison');
+    }
+  } else {
+    enemy.acidTickTimer = interval;
+  }
+}
+
+function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
+  const height = 18;
+  const width = 36;
+  const speed = 420;
+  const y = enemy.groundY - height;
+  const center = enemy.x + enemy.w / 2;
+  const base = {
+    y,
+    w: width,
+    h: height,
+    vy: 0,
+    damage: 4,
+    ignoreGround: true,
+    type: 'shockwave',
+  };
+  enemyProjectiles.push({
+    ...base,
+    x: center - width,
+    vx: -speed,
+  });
+  enemyProjectiles.push({
+    ...base,
+    x: center,
+    vx: speed,
+  });
+}
+
+function ensureBossMorph(enemy, target) {
+  const desired = target === 'square' ? 'square' : 'circle';
+  if (desired === 'square') {
+    if (enemy.morphMode === 'square' || enemy.morphMode === 'toSquare') return;
+    enemy.morphMode = 'toSquare';
+    enemy.morphTimer = 0;
+  } else {
+    if (enemy.morphMode === 'circle' || enemy.morphMode === 'toCircle') return;
+    enemy.morphMode = 'toCircle';
+    enemy.morphTimer = 0;
+  }
+}
+
+function isBossMorphComplete(enemy, target) {
+  if (target === 'square') {
+    return enemy.morphMode === 'square';
+  }
+  return enemy.morphMode === 'circle';
+}
+
+function updateBossMorph(enemy, dt) {
+  const duration = enemy.morphDuration || 0.25;
+  switch (enemy.morphMode) {
+    case 'circle':
+      enemy.morphBlend = 0;
+      break;
+    case 'square':
+      enemy.morphBlend = 1;
+      break;
+    case 'toSquare':
+      enemy.morphTimer += dt;
+      enemy.morphBlend = Math.min(1, enemy.morphTimer / duration);
+      if (enemy.morphTimer >= duration) {
+        enemy.morphMode = 'square';
+        enemy.morphTimer = 0;
+        enemy.morphBlend = 1;
+      }
+      break;
+    case 'toCircle':
+      enemy.morphTimer += dt;
+      enemy.morphBlend = Math.max(0, 1 - enemy.morphTimer / duration);
+      if (enemy.morphTimer >= duration) {
+        enemy.morphMode = 'circle';
+        enemy.morphTimer = 0;
+        enemy.morphBlend = 0;
+      }
+      break;
+    default:
+      enemy.morphMode = 'circle';
+      enemy.morphTimer = 0;
+      enemy.morphBlend = 0;
+      break;
   }
 }
