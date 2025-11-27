@@ -8,7 +8,7 @@ export const PLAYER_CONFIG = {
   jumpBoostThreshold: 30,
   jumpBoostMultiplier: 1.5,
   maxHealth: 30,
-  startingHealth: 10,
+  startingHealth: 1,
   invulnerability: 1,
 };
 

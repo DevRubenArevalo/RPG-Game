@@ -58,10 +58,55 @@ export class Renderer {
       }
     });
     traps.forEach((trap) => {
-      ctx.fillStyle = '#60192a';
-      ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
-      ctx.fillStyle = '#a9334b';
-      ctx.fillRect(trap.x + 4, trap.y + 4, trap.w - 8, trap.h - 8);
+      if (trap.type === 'lava') {
+        // Draw lava trap
+        ctx.fillStyle = '#60192a';
+        ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
+        ctx.fillStyle = '#a9334b';
+        ctx.fillRect(trap.x + 4, trap.y + 4, trap.w - 8, trap.h - 8);
+      } else {
+        // Draw spike trap - shiny steel
+        // Draw trap base - dark gray with black border
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(trap.x, trap.y, trap.w, trap.h / 2);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(trap.x, trap.y, trap.w, trap.h / 2);
+        
+        // Draw shiny highlight
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.6)';
+        ctx.fillRect(trap.x + 2, trap.y + 2, trap.w - 4, trap.h / 4);
+        
+        // Draw spikes
+        const spikeCount = Math.ceil(trap.w / 12);
+        for (let i = 0; i < spikeCount; i++) {
+          const spikeX = trap.x + (i * trap.w / spikeCount);
+          const spikeWidth = trap.w / spikeCount;
+          // Draw spike shadow/dark side
+          ctx.fillStyle = '#555555';
+          ctx.beginPath();
+          ctx.moveTo(spikeX, trap.y + trap.h / 2);
+          ctx.lineTo(spikeX + spikeWidth / 2, trap.y - 4);
+          ctx.lineTo(spikeX + spikeWidth / 2 - 2, trap.y - 2);
+          ctx.fill();
+          // Draw spike light side
+          ctx.fillStyle = '#cccccc';
+          ctx.beginPath();
+          ctx.moveTo(spikeX + spikeWidth / 2, trap.y - 4);
+          ctx.lineTo(spikeX + spikeWidth, trap.y + trap.h / 2);
+          ctx.lineTo(spikeX + spikeWidth / 2 + 2, trap.y - 2);
+          ctx.fill();
+          // Draw spike outline
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(spikeX, trap.y + trap.h / 2);
+          ctx.lineTo(spikeX + spikeWidth / 2, trap.y - 4);
+          ctx.lineTo(spikeX + spikeWidth, trap.y + trap.h / 2);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
     });
     platforms.forEach((plat) => {
       ctx.fillStyle = plat.color;
@@ -192,9 +237,14 @@ export class Renderer {
         ctx.ellipse(enemy.x + enemy.w / 2, enemy.y + enemy.h - 10, enemy.w / 2.1, enemy.h / 2.1, 0, 0, Math.PI * 2);
         ctx.fill();
       }
-      this.drawHealthBar(enemy.x + enemy.w / 2, enemy.y - 14, enemy.health, enemy.maxHealth);
+      const enemyHealthBarData = this.drawHealthBar(enemy.x + enemy.w / 2, enemy.y - 14, enemy.health, enemy.maxHealth);
+      // Draw enemy buffs if any
+      this.drawBuffsNextToHealthBar(enemyHealthBarData, enemy.buffs || []);
     });
-    this.drawHealthBar(player.x + player.w / 2, player.y - 20, player.health, player.maxHealth);
+    const playerHealthBarData = this.drawHealthBar(player.x + player.w / 2, player.y - 20, player.health, player.maxHealth);
+    // Draw player buffs if any, with test buff
+    const playerBuffs = player.buffs || [{ label: 'T', color: '#ffd25d' }];
+    this.drawBuffsNextToHealthBar(playerHealthBarData, playerBuffs);
     this.drawFlingCooldownIndicator();
     damageNums.forEach((num) => {
       const alpha = Math.max(0, num.life / this.damageLifetime);
@@ -214,6 +264,9 @@ export class Renderer {
       ctx.textAlign = 'left';
       ctx.fillText('God Mode Enabled', 20, 40);
       ctx.restore();
+    }
+    if (state.debugShowBossStats && state.boss) {
+      this.drawBossStatsWindow(state.boss);
     }
     if (!player.alive) {
       ctx.fillStyle = 'rgba(10, 10, 20, 0.6)';
@@ -348,7 +401,7 @@ export class Renderer {
     ctx.fillStyle = `rgba(255, 138, 158, ${ease})`;
     ctx.font = 'bold 48px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText('Slime is in pain...', centerX, 140);
+    ctx.fillText('Slime is in pain...' + (state.deathMessage ? ' ' + state.deathMessage : ''), centerX, 140);
     ctx.fillStyle = `rgba(212, 253, 245, ${ease})`;
     ctx.font = '24px Arial';
     ctx.fillText('Continue?', centerX, 180);
@@ -385,6 +438,35 @@ export class Renderer {
       ctx.fillStyle = color;
       ctx.fillRect(startX, y, unitWidth, unitHeight);
       startX += unitWidth + spacing;
+    });
+    return { barStartX: centerX - barWidth / 2, barEndX: centerX + barWidth / 2, barY: y, barHeight: unitHeight };
+  }
+
+  drawBuffsNextToHealthBar(healthBarData, buffs = []) {
+    const { ctx } = this;
+    const buffSize = healthBarData.barHeight * 2; // 2 health bar heights per buff
+    const buffSpacing = 2;
+    let buffX = healthBarData.barEndX + buffSpacing;
+    const buffY = healthBarData.barY;
+
+    buffs.forEach((buff) => {
+      // Draw buff box
+      ctx.strokeStyle = buff.color || '#5dffba';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(buffX, buffY, buffSize, buffSize);
+      
+      // Draw buff background
+      ctx.fillStyle = `${buff.color || '#5dffba'}33`;
+      ctx.fillRect(buffX, buffY, buffSize, buffSize);
+      
+      // Draw buff icon/text
+      ctx.fillStyle = buff.color || '#5dffba';
+      ctx.font = 'bold 8px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(buff.label || '●', buffX + buffSize / 2, buffY + buffSize / 2);
+      
+      buffX += buffSize + buffSpacing;
     });
   }
 
@@ -625,14 +707,20 @@ export class Renderer {
     const rows = 4;
     const perRow = Math.ceil((boss.maxHealth || 160) / rows);
     let rowY = boss.y - 24;
+    let firstRowHealthData = null;
     for (let i = 0; i < rows; i++) {
       const chunkStart = i * perRow;
       const chunkMax = Math.min(perRow, (boss.maxHealth || 0) - chunkStart);
       const chunkVal = Math.max(0, Math.min(chunkMax, boss.health - chunkStart));
-      this.drawHealthBar(boss.x + boss.w / 2, rowY, chunkVal, chunkMax);
+      const healthData = this.drawHealthBar(boss.x + boss.w / 2, rowY, chunkVal, chunkMax);
+      if (i === 0) firstRowHealthData = healthData; // Store first row for buff display
       rowY -= 18;
     }
-    // Draw invulnerability buff if active
+    // Draw boss buffs if any
+    if (firstRowHealthData) {
+      this.drawBuffsNextToHealthBar(firstRowHealthData, boss.buffs || []);
+    }
+    // Draw invulnerability buff if active (legacy support)
     if (boss.invulnerabilityTimer > 0) {
       this.drawBossInvulnerabilityBuff(boss);
     }
@@ -642,8 +730,11 @@ export class Renderer {
     const { ctx } = this;
     const barWidth = 40;
     const barHeight = 16;
-    const x = boss.x + boss.w / 2 + barWidth + 10;
-    const y = boss.y - 24 - (4 * 18) / 2 - barHeight / 2; // Center with health bars
+    // Position to the right of the top health bar
+    const topHealthBarY = boss.y - 24;
+    const healthBarWidth = 40; // Standard health bar width from drawHealthBar
+    const x = boss.x + boss.w / 2 + healthBarWidth / 2 + 10; // Right of health bar with padding
+    const y = topHealthBarY - barHeight / 2; // Align with top health bar
     
     // Draw shield icon
     const shieldSize = 12;
@@ -721,5 +812,142 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
   }
+
+  drawBossStatsWindow(boss) {
+    const { ctx, canvas } = this;
+    const windowWidth = 400;
+    const windowHeight = 500;
+    const x = canvas.width - windowWidth - 20;
+    const y = 20;
+
+    // Get difficulty level
+    const healthPerBar = boss.maxHealth / 4;
+    const difficultyLevel = Math.min(4, 1 + Math.floor((boss.maxHealth - boss.health) / healthPerBar));
+    
+    // Calculate stats based on difficulty
+    const speedMultiplier = difficultyLevel === 1 ? 1 : difficultyLevel === 2 ? 1 : difficultyLevel === 3 ? 1.5 : 1.75;
+    let projectileCount = 0;
+    let projectileWaves = 0;
+    if (difficultyLevel === 1) {
+      projectileCount = 0;
+      projectileWaves = 0;
+    } else if (difficultyLevel === 2) {
+      projectileCount = 2;
+      projectileWaves = 1;
+    } else if (difficultyLevel === 3) {
+      projectileCount = 4;
+      projectileWaves = 2;
+    } else if (difficultyLevel === 4) {
+      projectileCount = 6;
+      projectileWaves = 3;
+    }
+
+    const stats = [
+      `Difficulty Level: ${difficultyLevel}`,
+      `Health: ${boss.health.toFixed(0)} / ${boss.maxHealth}`,
+      `Current Bar: ${Math.ceil(boss.health / healthPerBar)} / 4`,
+      ``,
+      `--- Combat Stats ---`,
+      `Speed Multiplier: ${speedMultiplier}x`,
+      `Jump Duration: ${(boss.bossJumpDuration / speedMultiplier).toFixed(2)}s`,
+      ``,
+      `--- Projectile Stats ---`,
+      `Total Projectiles: ${projectileCount}`,
+      `Projectile Waves: ${projectileWaves}`,
+      `Projectile Size: ${difficultyLevel <= 2 ? '18x36px' : '150x30px'}`,
+      `Projectile Speed: 420px/s`,
+      `Projectile Damage: 4`,
+      ``,
+      `--- Phase Info ---`,
+      `Current Phase: ${boss.bossPhase || 'N/A'}`,
+      `Phase Timer: ${boss.bossTimer?.toFixed(2) || '0'}s`,
+      `Morph Mode: ${boss.morphMode || 'circle'}`,
+      `Morph Progress: ${boss.morphProgress?.toFixed(2) || '0'}%`,
+      ``,
+      `--- Status ---`,
+      `Invulnerability: ${boss.invulnerabilityTimer > 0 ? boss.invulnerabilityTimer.toFixed(1) + 's' : 'None'}`,
+      `Acid Duration: ${(boss.acidDuration || 0).toFixed(2)}s`,
+      `Acid Stacks: ${boss.acidStacks || 0}`,
+      `Regeneration: ${(boss.regenRate || 0).toFixed(2)}/s`,
+    ];
+
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(x, y, windowWidth, windowHeight);
+    ctx.strokeStyle = '#0f3460';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, windowWidth, windowHeight);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = '#e94560';
+    ctx.font = 'bold 16px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('Boss Stats (F2)', x + 12, y + 25);
+    ctx.restore();
+
+    // Setup scrolling
+    if (!this.bossStatsScroll) {
+      this.bossStatsScroll = 0;
+    }
+
+    // Draw scrollable content
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + 5, y + 35, windowWidth - 10, windowHeight - 40);
+    ctx.clip();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '12px Courier New';
+    ctx.textAlign = 'left';
+    
+    const lineHeight = 16;
+    const contentStartY = y + 35 - this.bossStatsScroll;
+
+    stats.forEach((stat, index) => {
+      const statY = contentStartY + index * lineHeight;
+      if (stat === '') {
+        // Empty line - draw separator
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 10, statY + 6);
+        ctx.lineTo(x + windowWidth - 10, statY + 6);
+        ctx.stroke();
+      } else {
+        ctx.fillText(stat, x + 10, statY + 12);
+      }
+    });
+
+    ctx.restore();
+
+    // Draw scroll indicator
+    const totalHeight = stats.length * lineHeight;
+    const visibleHeight = windowHeight - 40;
+    if (totalHeight > visibleHeight) {
+      const scrollBarHeight = (visibleHeight / totalHeight) * (windowHeight - 40);
+      const scrollBarY = y + 35 + (this.bossStatsScroll / totalHeight) * (windowHeight - 40);
+      ctx.save();
+      ctx.fillStyle = 'rgba(233, 69, 96, 0.6)';
+      ctx.fillRect(x + windowWidth - 8, scrollBarY, 4, scrollBarHeight);
+      ctx.restore();
+    }
+
+    // Handle mouse wheel scrolling
+    if (!window.bossStatsScrollListener) {
+      window.bossStatsScrollListener = (e) => {
+        if (this.state.debugShowBossStats && this.state.boss) {
+          const totalHeight = stats.length * lineHeight;
+          const visibleHeight = windowHeight - 40;
+          if (totalHeight > visibleHeight) {
+            this.bossStatsScroll = Math.max(0, Math.min(totalHeight - visibleHeight, this.bossStatsScroll + e.deltaY));
+          }
+        }
+      };
+      window.addEventListener('wheel', window.bossStatsScrollListener, { passive: false });
+    }
+  }
+
 
 }

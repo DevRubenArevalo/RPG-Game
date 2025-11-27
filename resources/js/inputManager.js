@@ -42,6 +42,11 @@ export class InputManager {
       e.preventDefault();
       return;
     }
+    if (key === 'f2') {
+      state.debugShowBossStats = !state.debugShowBossStats;
+      e.preventDefault();
+      return;
+    }
     if (key === 'k') {
       this.toggleMovementOverlay();
       e.preventDefault();

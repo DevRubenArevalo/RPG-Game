@@ -9,9 +9,9 @@ export const ENEMY_CONFIG = {
     speed: 320,
   },
   tiers: [
-    { tier: 'weak', health: 10, damage: 3, color: '#5dff5d' },
-    { tier: 'medium', health: 20, damage: 6, color: '#ffd25d' },
-    { tier: 'hard', health: 30, damage: 9, color: '#ff5d6c' },
+    { tier: 'weak', health: 10, damage: 3, color: '#5dff5d', deathMessage: 'Slimed by a weak slime' },
+    { tier: 'medium', health: 20, damage: 6, color: '#ffd25d', deathMessage: 'Crushed by a medium slime' },
+    { tier: 'hard', health: 30, damage: 9, color: '#ff5d6c', deathMessage: 'Destroyed by a hard slime' },
   ],
 };
 
@@ -51,6 +51,11 @@ export function createEnemy({
 }) {
   const roamMin = tier === 'hard' ? 0 : minX;
   const roamMax = tier === 'hard' ? Math.max(minX, worldWidth - ENEMY_CONFIG.width) : maxX;
+  
+  // Get death message from tier config
+  const tierConfig = ENEMY_CONFIG.tiers.find(t => t.tier === tier);
+  const deathMessage = tierConfig?.deathMessage || 'Slimed by an enemy';
+  
   return new Enemy({
     id,
     x,
@@ -83,6 +88,7 @@ export function createEnemy({
     acidStacks: 0,
     acidStackTimer: 0,
     acidStackCooldown: 0,
+    deathMessage,
   });
 }
 
@@ -135,6 +141,7 @@ export function createBossEnemy({ canvas, world, player }) {
     stompRecoverTimer: 0,
     invulnerabilityTimer: 0,
     lastHealthBar: 4, // Track which health bar was last (for detecting depletions)
+    deathMessage: 'Defeated by the boss',
   });
 }
 
@@ -348,7 +355,7 @@ export function updateEnemies({
 
     if (overlap(player, enemy)) {
       if (enemy.isBoss) {
-        hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2);
+        hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2, enemy);
         if (!player.alive) return;
         continue;
       }
@@ -369,7 +376,7 @@ export function updateEnemies({
         }
         continue;
       }
-      hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2);
+      hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2, enemy);
       if (!player.alive) return;
     }
   }
@@ -458,10 +465,16 @@ function updateBossEnemy(enemy, dt, {
     return;
   }
   updateBossMorph(enemy, dt);
-  enemy.health = Math.min(enemy.maxHealth, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
+  
+  // Calculate max health based on remaining health bars
+  const healthPerBar = enemy.maxHealth / 4;
+  const currentHealthBar = Math.ceil(enemy.health / healthPerBar);
+  const maxHealthForCurrentBar = currentHealthBar * healthPerBar;
+  
+  // Regen up to the max health of current bar
+  enemy.health = Math.min(maxHealthForCurrentBar, enemy.health + (enemy.regenRate ?? BOSS_CONFIG.regenRate) * dt);
   
   // Check for health bar depletion and trigger invulnerability
-  const currentHealthBar = Math.ceil(enemy.health / (enemy.maxHealth / 4));
   if (currentHealthBar < enemy.lastHealthBar) {
     enemy.invulnerabilityTimer = 10; // 10 second invulnerability
   }
@@ -508,6 +521,9 @@ function updateBossEnemy(enemy, dt, {
         ensureBossMorph(enemy, 'square');
         enemy.x = clamp(playerCenter - enemy.w / 2, 0, Math.max(0, world.width - enemy.w));
         enemy.y = enemy.groundY - enemy.h - enemy.jumpHeight;
+        // Clear old projectile queue for new stomp
+        enemy.projectileSpawnQueue = [];
+        enemy.projectileSpawnTimer = 0;
         break;
       }
       if (progress >= 1) {
@@ -530,30 +546,34 @@ function updateBossEnemy(enemy, dt, {
     case 'stompDrop':
       enemy.vy = (enemy.vy || 0) + world.gravity * 2.2 * dt;
       enemy.y += enemy.vy * dt;
+      // Process projectile spawn queue during stompDrop
+      processProjectileSpawnQueue(enemy, enemyProjectiles, dt);
       if (enemy.y + enemy.h >= enemy.groundY) {
         enemy.y = enemy.groundY - enemy.h;
         enemy.vy = 0;
         spawnShockwaveProjectiles(enemy, enemyProjectiles);
         enemy.bossPhase = 'stompRecover';
         ensureBossMorph(enemy, 'circle');
-      } else {
-        // Process projectile spawn queue while in stompDrop phase
-        processProjectileSpawnQueue(enemy, enemyProjectiles, dt);
       }
       break;
     case 'stompRecover':
       enemy.y = enemy.groundY - enemy.h;
       ensureBossMorph(enemy, 'circle');
+      // Continue processing projectile queue during recover phase
+      processProjectileSpawnQueue(enemy, enemyProjectiles, dt);
       if (isBossMorphComplete(enemy, 'circle')) {
         enemy.stompPending = false;
         enemy.bossPhase = 'recover';
         enemy.bossTimer = 0;
+        enemy.projectileSpawnTimer = 0; // Reset timer for next stomp
       }
       break;
     case 'recover':
     default:
       enemy.y = enemy.groundY - enemy.h;
       ensureBossMorph(enemy, 'circle');
+      // Continue processing projectile queue during recover phase
+      processProjectileSpawnQueue(enemy, enemyProjectiles, dt);
       if (enemy.bossTimer >= enemy.bossRecoverDuration) {
         enemy.bossPhase = 'windup';
         enemy.bossTimer = 0;
@@ -630,6 +650,10 @@ function applyBossPoison(
     enemy.acidTickTimer = (enemy.acidTickTimer ?? interval) - dt;
     while (enemy.acidTickTimer <= 0 && enemy.acidDuration > 0) {
       enemy.acidTickTimer += interval;
+      // Don't apply poison damage if boss is invulnerable
+      if (enemy.isBoss && enemy.invulnerabilityTimer > 0) {
+        continue;
+      }
       const stackMultiplier = Math.max(1, enemy.acidStacks || 0);
       const damage = playerDamagePerTick() * stackMultiplier * 0.5;
       enemy.health = Math.max(0, enemy.health - damage);
@@ -648,28 +672,39 @@ function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
   const baseWidth = 36;
   const baseSpeed = 420;
   
-  // Height scales: 1x at L1, 1x at L2, 4x at L3, 4x at L4
-  const heightMultiplier = difficulty === 1 || difficulty === 2 ? 1 : 4;
-  const height = baseHeight * heightMultiplier;
+  // Height scales: 1x at L1, 1x at L2, 150px at L3, 150px at L4
+  const height = difficulty === 1 || difficulty === 2 ? baseHeight : 150;
   
-  // Width scales with height to maintain aspect
-  const width = baseWidth * heightMultiplier;
+  // Width: 36px at L1/L2, 30px at L3/L4
+  const width = difficulty === 1 || difficulty === 2 ? baseWidth : 30;
   const speed = baseSpeed;
   const y = enemy.groundY - height;
-  const center = enemy.x + enemy.w / 2;
   
-  // Base projectile template
-  const createProjectile = (x, vx) => ({
-    x,
-    y,
-    w: width,
-    h: height,
-    vx,
-    vy: 0,
-    damage: 4,
-    ignoreGround: true,
-    type: 'shockwave',
-  });
+  // Reset spawn timer for new stomp
+  enemy.projectileSpawnTimer = 0;
+  
+  // Track spawn locations for debugging
+  const spawnLocations = [];
+  
+  // Base projectile template - calculates position from boss's CURRENT location when spawned
+  const createProjectile = (vx) => {
+    // Store a reference to calculate position when actually spawned
+    return {
+      x: 0, // Will be calculated in processProjectileSpawnQueue
+      y,
+      w: width,
+      h: height,
+      vx,
+      vy: 0,
+      damage: 4,
+      ignoreGround: true,
+      type: 'shockwave',
+      _enemyRef: enemy, // Reference to calculate live position
+      _calculateX: function() {
+        return this.vx < 0 ? this._enemyRef.x : this._enemyRef.x + this._enemyRef.w;
+      }
+    };
+  };
   
   // Level 1: Just jump, no stomp projectiles
   if (difficulty <= 1) {
@@ -678,8 +713,13 @@ function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
   
   // Level 2: 1 projectile immediately
   if (difficulty === 2) {
-    enemyProjectiles.push(createProjectile(center - width, -speed));
-    enemyProjectiles.push(createProjectile(center, speed));
+    const proj1 = createProjectile(-speed);
+    const proj2 = createProjectile(speed);
+    // Calculate position at spawn time for immediate projectiles
+    proj1.x = proj1._calculateX();
+    proj2.x = proj2._calculateX();
+    enemyProjectiles.push(proj1);
+    enemyProjectiles.push(proj2);
     return;
   }
   
@@ -693,38 +733,36 @@ function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
     if (difficulty === 3) {
       // Wave 1: immediate
       enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
-        createProjectile(center - width, -speed),
-        createProjectile(center, speed),
+        createProjectile(-speed),
+        createProjectile(speed),
       ]});
       // Wave 2: +0.3s
       enemy.projectileSpawnQueue.push({ delay: 0.3, projectiles: [
-        createProjectile(center - width, -speed),
-        createProjectile(center, speed),
+        createProjectile(-speed),
+        createProjectile(speed),
       ]});
-    }
-    
-    // Level 4: 3 waves (immediate, +0.2s, +0.4s)
-    if (difficulty >= 4) {
+    } else if (difficulty >= 4) {
+      // Level 4: 3 waves (immediate, +0.2s, +0.4s)
       // Wave 1: immediate
       enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
-        createProjectile(center - width, -speed),
-        createProjectile(center, speed),
+        createProjectile(-speed),
+        createProjectile(speed),
       ]});
       // Wave 2: +0.2s
       enemy.projectileSpawnQueue.push({ delay: 0.2, projectiles: [
-        createProjectile(center - width, -speed),
-        createProjectile(center, speed),
+        createProjectile(-speed),
+        createProjectile(speed),
       ]});
       // Wave 3: +0.4s
       enemy.projectileSpawnQueue.push({ delay: 0.4, projectiles: [
-        createProjectile(center - width, -speed),
-        createProjectile(center, speed),
+        createProjectile(-speed),
+        createProjectile(speed),
       ]});
     }
-    
-    // Process the queue immediately for 0-delay items
-    processProjectileSpawnQueue(enemy, enemyProjectiles);
   }
+  
+  // Log spawn locations for debugging
+  console.log(`[Level ${difficulty}] Shockwave Spawn Locations:`, spawnLocations);
 }
 
 /**
@@ -743,7 +781,14 @@ function processProjectileSpawnQueue(enemy, enemyProjectiles, dt = 0) {
   for (let i = enemy.projectileSpawnQueue.length - 1; i >= 0; i--) {
     const item = enemy.projectileSpawnQueue[i];
     if (enemy.projectileSpawnTimer >= item.delay) {
-      item.projectiles.forEach(proj => enemyProjectiles.push(proj));
+      console.log(`[Wave Spawn] Timer: ${enemy.projectileSpawnTimer.toFixed(3)}s, Delay: ${item.delay}s, Projectiles: ${item.projectiles.length}`);
+      item.projectiles.forEach(proj => {
+        // Calculate position at spawn time using boss's CURRENT location
+        if (proj._calculateX) {
+          proj.x = proj._calculateX();
+        }
+        enemyProjectiles.push(proj);
+      });
       enemy.projectileSpawnQueue.splice(i, 1);
     }
   }

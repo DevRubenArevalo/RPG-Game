@@ -749,7 +749,7 @@ function checkBossCollision_Update() {
   if (checkBossCollision(state.boss, player)) {
     // Apply contact damage to player
     const bossContactDamage = state.boss.damage || 5;
-    hurtPlayer(bossContactDamage, state.boss.x + state.boss.w / 2);
+    hurtPlayer(bossContactDamage, state.boss.x + state.boss.w / 2, state.boss);
   }
 }
 
@@ -768,16 +768,16 @@ function updateEnemyProjectiles(dt) {
       enemyProjectiles.splice(i, 1);
       continue;
     }
-  let removed = false;
-    for (const plat of platforms) {
-      if (proj.x + proj.w > plat.x && proj.x < plat.x + plat.w &&
-        proj.y + proj.h > plat.y && proj.y < plat.y + plat.h) {
-        enemyProjectiles.splice(i, 1);
-        removed = true;
-        break;
+    // Only boss projectiles pierce through platforms and destroy them
+    if (proj.type === 'shockwave') {
+      for (let p = platforms.length - 1; p >= 0; p--) {
+        const plat = platforms[p];
+        if (proj.x + proj.w > plat.x && proj.x < plat.x + plat.w &&
+          proj.y + proj.h > plat.y && proj.y < plat.y + plat.h) {
+          platforms.splice(p, 1);
+        }
+      }
     }
-}
-if (removed) continue;
     if (proj.y + proj.h >= world.groundY) {
       if (proj.ignoreGround) {
         proj.y = world.groundY - proj.h;
@@ -842,8 +842,8 @@ if (removed) continue;
         proj.y = Math.min(proj.y, player.y + player.h - proj.h - 2);
         continue;
       }
-      enemyProjectiles.splice(i, 1);
-      hurtPlayer(proj.damage, proj.x + proj.w / 2);
+      const deathMsg = proj.type === 'shockwave' ? 'Hit by boss shockwave' : 'Hit by enemy projectile';
+      hurtPlayer(proj.damage, proj.x + proj.w / 2, { deathMessage: deathMsg });
       continue;
     }
   }
@@ -882,7 +882,7 @@ function updateDamageNumbers(dt) {
 }
 }
 
-function hurtPlayer(amount, sourceX) {
+function hurtPlayer(amount, sourceX, source) {
   if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
   if (player.shieldActive) {
     player.shieldActive = false;
@@ -903,6 +903,7 @@ playerManager.applyScale();
 if (player.health <= 0) {
   player.health = 0;
   player.alive = false;
+  state.deathMessage = source?.deathMessage || 'Unknown cause';
   recordHighScore(player.farthest);
   gameOverManager.trigger();
 }
@@ -915,7 +916,7 @@ function clampPlayerHorizontal() {
 function checkTraps() {
   for (const trap of traps) {
     if (overlap(player, trap)) {
-      hurtPlayer(trap.damage ?? 1, trap.x + trap.w / 2);
+      hurtPlayer(trap.damage ?? 1, trap.x + trap.w / 2, trap);
     }
   }
 }
@@ -934,7 +935,6 @@ function spawnBoss() {
   state.shopActive = false;
   shopManager.close();
   enemies.length = 0;
-  traps.length = 0;
   enemyProjectiles.length = 0;
   coins.length = 0;
   slimeChunks.length = 0;
@@ -1203,7 +1203,7 @@ function resetGame(toHome = false) {
   });
   Object.assign(player, freshPlayer);
   player.maxHealth = baseMaxHealth;
-  player.health = Math.min(baseMaxHealth, 10);
+  player.health = Math.min(baseMaxHealth, PLAYER_CONFIG.startingHealth);
   player.coins = newCoins;
   player.coinMultiplier = baseCoinMultiplier;
   player.regenUnlocked = false;
