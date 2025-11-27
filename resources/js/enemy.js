@@ -353,6 +353,12 @@ export function updateEnemies({
         spawnSlimeChunks(enemy);
         spawnCoins(enemy);
       }
+      // Remove all projectiles spawned by this enemy
+      for (let j = enemyProjectiles.length - 1; j >= 0; j--) {
+        if (enemyProjectiles[j].enemySource === enemy) {
+          enemyProjectiles.splice(j, 1);
+        }
+      }
       enemies.splice(i, 1);
       continue;
     }
@@ -375,6 +381,12 @@ export function updateEnemies({
           playEnemyDeathSound();
           spawnSlimeChunks(enemy);
           spawnCoins(enemy);
+          // Remove all projectiles spawned by this enemy
+          for (let j = enemyProjectiles.length - 1; j >= 0; j--) {
+            if (enemyProjectiles[j].enemySource === enemy) {
+              enemyProjectiles.splice(j, 1);
+            }
+          }
           enemies.splice(i, 1);
           continue;
         }
@@ -401,6 +413,7 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       damage,
       reflected: false,
       trailTimer: 0,
+      enemySource: enemy,
     }));
     enemyProjectiles.push(new Projectile({
       x: centerX - 5,
@@ -412,6 +425,7 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       damage,
       reflected: false,
       trailTimer: 0,
+      enemySource: enemy,
     }));
   } else {
     enemyProjectiles.push(new Projectile({
@@ -424,6 +438,7 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       damage,
       reflected: false,
       trailTimer: 0,
+      enemySource: enemy,
     }));
     enemyProjectiles.push(new Projectile({
       x: centerX - 2,
@@ -435,6 +450,7 @@ function spawnEnemyProjectiles(enemy, enemyProjectiles, speed) {
       damage,
       reflected: false,
       trailTimer: 0,
+      enemySource: enemy,
     }));
   }
 }

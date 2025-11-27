@@ -352,10 +352,6 @@ export class Renderer {
   drawDefeatCinematicElements(defeatCinematic) {
     const { ctx, canvas } = this;
     
-    if (defeatCinematic.rainItems.length > 0) {
-      console.log(`🎨 Drawing ${defeatCinematic.rainItems.length} rain items. First item: type=${defeatCinematic.rainItems[0].type}, x=${defeatCinematic.rainItems[0].x}, y=${defeatCinematic.rainItems[0].y}`);
-    }
-    
     // Draw explosion particles
     ctx.save();
     defeatCinematic.explosionParticles.forEach((p) => {
@@ -365,28 +361,6 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
-    });
-    ctx.restore();
-    
-    // Draw rain items (chunks and coins)
-    ctx.save();
-    defeatCinematic.rainItems.forEach((item) => {
-      if (item.type === 'chunk') {
-        ctx.fillStyle = '#5dffba';
-        ctx.fillRect(item.x, item.y, item.w, item.h);
-        ctx.fillStyle = '#3ba389';
-        ctx.fillRect(item.x + 3, item.y + 3, item.w - 6, item.h - 6);
-      } else {
-        // Draw coin as simple circle
-        ctx.fillStyle = '#ffd25d';
-        ctx.beginPath();
-        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#ffef5d';
-        ctx.beginPath();
-        ctx.arc(item.x + item.w / 2, item.y + item.h / 2, item.w / 3.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
     });
     ctx.restore();
     

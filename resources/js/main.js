@@ -1168,6 +1168,14 @@ function updateDefeatCinematic(dt) {
         boss.invisible = true;
         player.health = player.maxHealth;
         playerManager.applyScale();
+        
+        // Clear all obstacles during rain collection phase
+        state.enemies.length = 0;
+        state.platforms.length = 0;
+        state.traps.length = 0;
+        state.enemyProjectiles.length = 0;
+        console.log('🧹 Cleared enemies, platforms, traps, and projectiles for rain collection');
+        
         spawnDefeatRain(def);
       }
       break;
@@ -1211,21 +1219,26 @@ function updateDefeatCinematic(dt) {
         console.log('📹 Camera reset complete - Back to player');
       }
       
-      // Spawn rain items gradually throughout the rain phase
-      def.rainSpawnTimer += dt;
-      const itemsToSpawn = Math.floor(def.rainSpawnTimer * def.rainSpawnRate);
-      if (itemsToSpawn > 0) {
-        console.log(`🌧️  Rain phase: spawning ${itemsToSpawn} items (timer: ${def.rainSpawnTimer.toFixed(2)}, rate: ${def.rainSpawnRate.toFixed(2)})`);
-        for (let i = 0; i < itemsToSpawn; i++) {
-          spawnSingleRainItem(def);
+      // Spawn rain items rapidly within first 5 seconds (cap at 40 total)
+      if (def.timer < 5) {
+        def.rainSpawnTimer += dt;
+        const itemsToSpawn = Math.floor(def.rainSpawnTimer * def.rainSpawnRate);
+        if (itemsToSpawn > 0 && def.rainItemsSpawned < 40) {
+          const canSpawn = Math.min(itemsToSpawn, 40 - def.rainItemsSpawned);
+          console.log(`🌧️  Rain phase: spawning ${canSpawn} items (timer: ${def.rainSpawnTimer.toFixed(2)}, rate: ${def.rainSpawnRate.toFixed(2)}, total: ${def.rainItemsSpawned}/${40})`);
+          for (let i = 0; i < canSpawn; i++) {
+            spawnSingleRainItem(def);
+          }
+          def.rainSpawnTimer -= itemsToSpawn / def.rainSpawnRate;
         }
-        def.rainSpawnTimer -= itemsToSpawn / def.rainSpawnRate;
       }
       
       updateDefeatRain(def, dt);
       
-      if (def.timer >= def.rainDuration) {
-        console.log('🎉 RAIN COMPLETE → LEVEL COMPLETE');
+      // Check if all rain items collected (no time limit, just wait for collection)
+      const totalRainItems = state.slimeChunks.filter(c => c.rainItem).length + state.coins.filter(c => c.rainItem).length;
+      if (totalRainItems === 0 && def.rainItemsSpawned > 0) {
+        console.log(`🎉 RAIN COMPLETE → All items collected (${def.rainItemsCollected}/${def.rainItemsSpawned})`);
         finishDefeatCinematic();
       }
       break;
@@ -1259,65 +1272,119 @@ function triggerBossExplosion(def, boss) {
 }
 
 function spawnDefeatRain(def) {
-  console.log('📧 spawnDefeatRain called - spawning 5 initial items');
-  // Spawn initial items spread across the width
-  for (let i = 0; i < 5; i++) {
+  console.log('📧 spawnDefeatRain called - spawning initial rain items');
+  def.rainItemsSpawned = 0;
+  for (let i = 0; i < 3; i++) {
     spawnSingleRainItem(def);
   }
-  console.log(`   Total rain items after initial spawn: ${def.rainItems.length}`);
+  console.log(`   Total rain items spawned: ${def.rainItemsSpawned}`);
 }
 
 function spawnSingleRainItem(def) {
-  const isChunk = Math.random() > 0.6;
-  const x = Math.random() * (canvas.width - 40) + 20;
+  const isChunk = Math.random() > 0.55;
+  const screenStartX = canvas.width * 0.35;
+  const screenEndX = canvas.width * 0.65;
+  const x = Math.random() * (screenEndX - screenStartX) + screenStartX + camera.x;
+  const y = -50;
+  const initialVy = 35;
   
-  const item = {
-    type: isChunk ? 'chunk' : 'coin',
-    x,
-    y: -50,
-    w: isChunk ? 18 : 16,
-    h: isChunk ? 14 : 16,
-    vx: (Math.random() - 0.5) * 100,
-    vy: 50,
-    life: 20,
-  };
-  
-  def.rainItems.push(item);
-  console.log(`✨ Spawned ${item.type} at x=${Math.round(x)}, y=${item.y}, vx=${item.vx.toFixed(1)}, vy=${item.vy}, life=${item.life}s, total items: ${def.rainItems.length}`);
+  if (isChunk) {
+    state.slimeChunks.push({
+      x,
+      y,
+      w: 18,
+      h: 14,
+      vx: (Math.random() - 0.5) * 80,
+      vy: initialVy,
+      life: 25,
+      rainItem: true,
+    });
+    def.rainItemsSpawned++;
+    console.log(`✨ Spawned chunk at x=${Math.round(x)}, vy=${initialVy}`);
+  } else {
+    state.coins.push({
+      x,
+      y,
+      w: 16,
+      h: 16,
+      vx: (Math.random() - 0.5) * 80,
+      vy: initialVy,
+      life: 25,
+      rainItem: true,
+    });
+    def.rainItemsSpawned++;
+    console.log(`✨ Spawned coin at x=${Math.round(x)}, vy=${initialVy}`);
+  }
 }
 
 function updateDefeatRain(def, dt) {
-  const initialCount = def.rainItems.length;
-  const initialParticles = def.explosionParticles.length;
+  const initialChunks = state.slimeChunks.length;
+  const initialCoins = state.coins.length;
   
-  for (let i = def.rainItems.length - 1; i >= 0; i--) {
-    const item = def.rainItems[i];
-    item.vy += world.gravity * 0.8 * dt;
-    item.y += item.vy * dt;
-    item.x += item.vx * dt;
-    item.life -= dt;
+  // Update rain chunks
+  for (let i = state.slimeChunks.length - 1; i >= 0; i--) {
+    const chunk = state.slimeChunks[i];
+    chunk.vy += world.gravity * 0.8 * dt;
+    chunk.y += chunk.vy * dt;
+    chunk.x += chunk.vx * dt;
+    chunk.life -= dt;
+    
+    // Check if chunk hit ground
+    if (chunk.y + chunk.h >= world.groundY) {
+      chunk.y = world.groundY - chunk.h;
+      chunk.vy = 0;
+    }
     
     // Check collision with player
-    if (overlap(player, item)) {
-      if (item.type === 'chunk') {
-        // Chunks increase max health
-        player.maxHealth += 10;
-        player.health = Math.min(player.health + 10, player.maxHealth);
-        playChunkSound();
-      } else if (item.type === 'coin') {
-        // Coins add money
-        state.coins += 5;
-        playCoinSound();
+    if (overlap(player, chunk)) {
+      player.maxHealth += 10;
+      player.health = Math.min(player.health + 10, player.maxHealth);
+      playChunkSound();
+      if (chunk.rainItem) {
+        def.rainItemsCollected++;
       }
-      def.rainItems.splice(i, 1);
+      state.slimeChunks.splice(i, 1);
       continue;
     }
     
-    if (item.life <= 0) {
-      def.rainItems.splice(i, 1);
+    // Remove if life expired
+    if (chunk.life <= 0) {
+      state.slimeChunks.splice(i, 1);
     }
   }
   
+  // Update rain coins
+  for (let i = state.coins.length - 1; i >= 0; i--) {
+    const coin = state.coins[i];
+    coin.vy += world.gravity * 0.8 * dt;
+    coin.y += coin.vy * dt;
+    coin.x += coin.vx * dt;
+    coin.life -= dt;
+    
+    // Check if coin hit ground
+    if (coin.y + coin.h >= world.groundY) {
+      coin.y = world.groundY - coin.h;
+      coin.vy = 0;
+    }
+    
+    // Check collision with player
+    if (overlap(player, coin)) {
+      state.money += 5;
+      playCoinSound();
+      if (coin.rainItem) {
+        def.rainItemsCollected++;
+      }
+      state.coins.splice(i, 1);
+      continue;
+    }
+    
+    // Remove if life expired
+    if (coin.life <= 0) {
+      state.coins.splice(i, 1);
+    }
+  }
+  
+  // Update explosion particles
   for (let i = def.explosionParticles.length - 1; i >= 0; i--) {
     const p = def.explosionParticles[i];
     p.vy += world.gravity * 0.6 * dt;
@@ -1330,13 +1397,21 @@ function updateDefeatRain(def, dt) {
     }
   }
   
-  if (initialCount > 0 || initialParticles > 0) {
-    console.log(`   Rain items: ${def.rainItems.length} (was ${initialCount}), Particles: ${def.explosionParticles.length} (was ${initialParticles})`);
+  if (initialChunks > 0 || initialCoins > 0 || def.explosionParticles.length > 0) {
+    console.log(`   Rain - Chunks: ${state.slimeChunks.length} (was ${initialChunks}), Coins: ${state.coins.length} (was ${initialCoins}), Particles: ${def.explosionParticles.length}`);
   }
 }
 
 function finishDefeatCinematic() {
   console.log('🏆 LEVEL COMPLETE - Sanctuary Secured');
+  // Clean up any remaining boss projectiles
+  if (state.boss) {
+    for (let i = state.enemyProjectiles.length - 1; i >= 0; i--) {
+      if (state.enemyProjectiles[i].enemySource === state.boss) {
+        state.enemyProjectiles.splice(i, 1);
+      }
+    }
+  }
   state.defeatCinematic = null;
   state.cinematicCameraX = null;
   state.cameraZoomTarget = 1;
@@ -1368,10 +1443,11 @@ function handleBossDefeat() {
     explosionDuration: 0.3,
     rainDuration: 15,
     rainStartY: -100,
-    rainSpawnRate: 40 / 15, // 40 items over 15 seconds = ~2.67 per second
+    rainSpawnRate: 40 / 5, // 40 items over 5 seconds = 8 per second
     rainSpawnTimer: 0,
     explosionParticles: [],
-    rainItems: [],
+    rainItemsSpawned: 0,
+    rainItemsCollected: 0,
     bossRef: bossRef,
     bossStartX: bossRef?.x ?? 0,
     bossStartY: bossRef?.y ?? 0,
@@ -1385,6 +1461,7 @@ function resetBossState() {
   state.bossDefeated = false;
   state.cinematic = null;
   state.cinematicCameraX = null;
+  state.defeatCinematic = null;
   state.bossRoarWave = null;
   state.cameraZoomTarget = 1;
   state.cameraZoom = 1;
@@ -1495,6 +1572,9 @@ function resetGame(toHome = false) {
   platformBounds.clear();
   state.room.reset();
   state.generatedUntil = 0;
+  // Reset world controller counters to ensure proper regeneration
+  worldController.platformIdCounter = 0;
+  worldController.enemyIdCounter = 0;
   world.width = canvas.width * 1.5;
   camera.x = 0;
   const newCoins = toHome ? 0 : savedCoins;
@@ -1519,6 +1599,7 @@ function resetGame(toHome = false) {
   player.ducking = false;
   resolvePlatformCollisions(player);
   playerManager.resetMovementState();
+  player.farthest = 0;
   worldController.seedWorld();
   if (toHome) {
     state.homeScreenActive = true;
