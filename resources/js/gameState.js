@@ -69,5 +69,6 @@ export class GameState {
     this.bossRoarWave = null;
     this.lastPlatformStats = null;
     this.godModePrevHealth = null;
+    this.debugShowCollisions = false;
   }
 }

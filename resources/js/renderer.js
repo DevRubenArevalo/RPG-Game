@@ -163,8 +163,15 @@ export class Renderer {
       ctx.stroke();
       ctx.restore();
     }
+    if (state.debugShowCollisions) {
+      this.drawPlayerCollisionDebug(player);
+      enemyProjectiles.forEach((proj) => this.drawProjectileCollisionDebug(proj));
+    }
     if (boss) {
       this.drawBoss(boss);
+      if (state.debugShowCollisions) {
+        this.drawBossCollisionDebug(boss);
+      }
       this.drawBossHealthBarsWorld(boss);
       this.drawBossRoarWave(boss);
     }
@@ -196,6 +203,9 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.fillText(`-${num.value}`, num.x, num.y);
     });
+    if (state.debugShowCollisions) {
+      this.drawAllCollisionDebug(state, platforms, traps, world);
+    }
     ctx.restore();
     if (godMode) {
       ctx.save();
@@ -466,6 +476,147 @@ export class Renderer {
       ctx.ellipse(centerX, boss.groundY, boss.w * 0.65, boss.h * 0.1 + pulse * 10, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  drawBossCollisionDebug(boss) {
+    const { ctx } = this;
+    if (!boss) return;
+    
+    ctx.save();
+    
+    if (boss.morphMode === 'square') {
+      // Draw full rectangle collision visualization (no inset)
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
+      ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
+      
+      ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(boss.x, boss.y, boss.w, boss.h);
+    } else {
+      // Draw full circle collision visualization
+      const radius = boss.w / 2;
+      const centerX = boss.x + boss.w / 2;
+      const centerY = boss.y + boss.h / 2;
+      
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.3)';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
+
+  drawPlayerCollisionDebug(player) {
+    const { ctx } = this;
+    if (!player) return;
+    
+    ctx.save();
+    
+    // Draw the player's collision circle in blue (matching the visual ellipse)
+    const baseX = player.x + player.w / 2;
+    const baseY = player.y + player.h - 10;
+    
+    ctx.fillStyle = 'rgba(100, 200, 255, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(baseX, baseY, player.w / 2, player.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = 'rgba(50, 150, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(baseX, baseY, player.w / 2, player.h / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    // Draw a center point for reference
+    ctx.fillStyle = 'rgba(50, 150, 255, 0.8)';
+    ctx.beginPath();
+    ctx.arc(baseX, baseY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.restore();
+  }
+
+  drawEnemyCollisionDebug(enemy) {
+    const { ctx } = this;
+    if (!enemy) return;
+    
+    ctx.save();
+    
+    // Draw enemy collision circle in yellow (matching the visual ellipse)
+    const centerX = enemy.x + enemy.w / 2;
+    const centerY = enemy.y + enemy.h - 8;
+    
+    ctx.fillStyle = 'rgba(255, 255, 100, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, enemy.w / 2, enemy.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = 'rgba(255, 255, 50, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(centerX, centerY, enemy.w / 2, enemy.h / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    ctx.restore();
+  }
+
+  drawProjectileCollisionDebug(proj) {
+    const { ctx } = this;
+    if (!proj) return;
+    
+    ctx.save();
+    
+    // Draw projectile collision rectangle in orange
+    ctx.fillStyle = 'rgba(255, 165, 50, 0.3)';
+    ctx.fillRect(proj.x, proj.y, proj.w, proj.h);
+    
+    ctx.strokeStyle = 'rgba(255, 140, 0, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(proj.x, proj.y, proj.w, proj.h);
+    
+    ctx.restore();
+  }
+
+  drawAllCollisionDebug(state, platforms, traps, world) {
+    const { ctx, canvas } = this;
+    
+    ctx.save();
+    
+    // Draw ground/floor collision first (so it appears behind other boxes)
+    const groundHeight = canvas.height - world.groundY;
+    ctx.fillStyle = 'rgba(150, 150, 255, 0.25)';
+    ctx.fillRect(state.camera.x - 200, world.groundY, canvas.width + 400, groundHeight);
+    
+    ctx.strokeStyle = 'rgba(100, 100, 200, 1)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(state.camera.x - 200, world.groundY, canvas.width + 400, 2);
+    
+    // Draw platform collisions in green with higher opacity
+    platforms.forEach((plat) => {
+      ctx.fillStyle = 'rgba(100, 255, 100, 0.35)';
+      ctx.fillRect(plat.x, plat.y, plat.w, plat.h);
+      
+      ctx.strokeStyle = 'rgba(50, 200, 50, 1)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(plat.x, plat.y, plat.w, plat.h);
+    });
+    
+    // Draw traps in dark red with higher opacity
+    traps.forEach((trap) => {
+      ctx.fillStyle = 'rgba(255, 100, 100, 0.35)';
+      ctx.fillRect(trap.x, trap.y, trap.w, trap.h);
+      
+      ctx.strokeStyle = 'rgba(200, 50, 50, 1)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(trap.x, trap.y, trap.w, trap.h);
+    });
+    
     ctx.restore();
   }
 

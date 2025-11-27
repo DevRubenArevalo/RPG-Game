@@ -5,7 +5,7 @@ import { GameState } from './gameState.js';
 import { ENEMY_CONFIG, createEnemy, createBossEnemy, updateEnemies } from './enemy.js';
 import { Player, PLAYER_CONFIG, updatePlayerMovement } from './player.js';
 import { UPGRADES } from './upgrades.js';
-import { clamp, overlap } from './utils.js';
+import { clamp, overlap, checkBossCollision } from './utils.js';
 import { InputManager } from './inputManager.js';
 import { PlayerManager } from './playerManager.js';
 import { ShopController } from './shopController.js';
@@ -175,6 +175,7 @@ function update(dt) {
   updateChunks(dt);
   updateCoins(dt);
   updateEnemyProjectiles(dt);
+  checkBossCollision_Update();
   updateEnemies({
     enemies,
     dt,
@@ -739,6 +740,17 @@ function updateCoins(dt) {
   playCoinSound();
 }
 }
+}
+
+function checkBossCollision_Update() {
+  if (!state.boss || !player.alive) return;
+  
+  // Check if player collides with boss using morphing-aware collision detection
+  if (checkBossCollision(state.boss, player)) {
+    // Apply contact damage to player
+    const bossContactDamage = state.boss.damage || 5;
+    hurtPlayer(bossContactDamage, state.boss.x + state.boss.w / 2);
+  }
 }
 
 function updateEnemyProjectiles(dt) {

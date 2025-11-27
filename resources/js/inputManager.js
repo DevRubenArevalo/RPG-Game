@@ -37,6 +37,11 @@ export class InputManager {
     }
     const isRefreshKey = e.key === 'F5';
     const key = e.key.toLowerCase();
+    if (key === 'f1') {
+      state.debugShowCollisions = !state.debugShowCollisions;
+      e.preventDefault();
+      return;
+    }
     if (key === 'k') {
       this.toggleMovementOverlay();
       e.preventDefault();
