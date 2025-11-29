@@ -7,6 +7,8 @@ export class InputManager {
     openShop,
     gameOverManager,
     toggleMovementOverlay,
+    toggleDebugMenu,
+    triggerBossCutscene = null,
   }) {
     this.state = gameState;
     this.player = player;
@@ -15,6 +17,8 @@ export class InputManager {
     this.openShop = openShop;
     this.gameOverManager = gameOverManager;
     this.toggleMovementOverlay = toggleMovementOverlay;
+    this.toggleDebugMenu = toggleDebugMenu;
+    this.triggerBossCutscene = triggerBossCutscene;
     this.arrowKeys = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
@@ -33,6 +37,16 @@ export class InputManager {
     }
     const isRefreshKey = e.key === 'F5';
     const key = e.key.toLowerCase();
+    if (key === 'f1') {
+      state.debugShowCollisions = !state.debugShowCollisions;
+      e.preventDefault();
+      return;
+    }
+    if (key === 'f2') {
+      state.debugShowBossStats = !state.debugShowBossStats;
+      e.preventDefault();
+      return;
+    }
     if (key === 'k') {
       this.toggleMovementOverlay();
       e.preventDefault();
@@ -46,11 +60,21 @@ export class InputManager {
       return;
     }
     if (key === 'g') {
-      state.godMode = !state.godMode;
+      this.toggleDebugMenu?.();
+      e.preventDefault();
       return;
     }
     if (key === 'h') {
       player.coins += 100;
+      return;
+    }
+    if (key === 'l') {
+      if (player.x < 19000) {
+        player.x = 19000;
+        player.prevX = player.x;
+        player.prevY = player.y;
+        player.farthest = Math.max(player.farthest, player.x);
+      }
       return;
     }
     if (key === 'j') {

@@ -161,6 +161,28 @@
       <p style="margin:12px 0 0;font-size:12px;color:#6fded0;">Press K to close.</p>
     </div>
   </div>
+  <div id="debugMenu" class="debug-menu hidden">
+    <div class="debug-menu__panel">
+      <h4>Debug Controls</h4>
+      <div class="debug-menu__buttons">
+        <button id="debugToggleGod" type="button">Toggle God Mode</button>
+        <button id="debugAddCoins" type="button">+1000 Coins</button>
+        <button id="debugUnlockAbilities" type="button">Unlock All Abilities</button>
+        <button id="debugTravelBoost" type="button">Advance 9,000 Distance</button>
+        <button id="debugOpenShop" type="button">Force Shop</button>
+        <button id="debug999Damage" type="button">Toggle 999 Damage</button>
+      </div>
+      <p class="debug-menu__hint">Press G to close.</p>
+    </div>
+  </div>
+  <div id="levelCompleteOverlay" class="level-complete hidden">
+    <div class="level-complete__panel">
+      <div class="level-complete__badge">Boss Down</div>
+      <h2>Sanctuary Secured</h2>
+      <p>The colossal teal slime has fallen. Your trail carved the future of slimekind.</p>
+      <button id="levelCompleteReplay" type="button">Play Again</button>
+    </div>
+  </div>
   <script type="module" src="./resources/js/main.js"></script>
 
 </body>

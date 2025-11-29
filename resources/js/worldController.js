@@ -232,12 +232,16 @@ export class WorldController {
       const available = Math.max(0, end - trapWidth - trapStartMin - 40);
       if (available > 0) {
         const trapX = trapStartMin + randomRange(0, available);
+        const trapType = Math.random() < 0.5 ? 'spike' : 'lava';
+        const deathMessage = trapType === 'spike' ? 'Impaled by spike trap' : 'Melted in lava';
         this.traps.push({
           x: trapX,
           y: this.world.groundY - 14,
           w: trapWidth,
           h: 14,
           damage: Math.max(1, trapDamage),
+          type: trapType,
+          deathMessage,
         });
       }
     }

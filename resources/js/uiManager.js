@@ -29,7 +29,7 @@ const HOME_INFO = {
     body: `<p>Quick tweaks before diving in:</p>
       <ul>
         <li>Use the <strong>Mute Audio</strong> button to silence SFX/music.</li>
-        <li><strong>Debug keys</strong>: G toggles god mode, H grants coins, J opens the shop.</li>
+        <li><strong>Debug keys</strong>: G opens debug controls, H grants coins, J opens the shop.</li>
         <li>Visit shops every 5,000 distance to buy upgrades or reroll.</li>
       </ul>`,
   },
@@ -45,12 +45,20 @@ const HOME_INFO = {
 };
 
 export class UIManager {
-  constructor({ state: gameState, audio, player, onTogglePause, onResetGame }) {
+  constructor({
+    state: gameState,
+    audio,
+    player,
+    onTogglePause,
+    onResetGame,
+    debugActions = {},
+  }) {
     this.state = gameState;
     this.audio = audio;
     this.player = player;
     this.onTogglePause = onTogglePause;
     this.onResetGame = onResetGame;
+    this.debugActions = debugActions;
     this.abilityListEl = document.getElementById('abilityList');
     this.homeInfoEl = document.getElementById('homeInfo');
     this.homeStartButton = document.getElementById('homeStart');
@@ -63,7 +71,17 @@ export class UIManager {
     this.pauseRetry = document.getElementById('pauseRetry');
     this.movementOverlayEl = document.getElementById('movementOverlay');
     this.movementStatsEl = document.getElementById('movementStats');
+    this.debugMenuEl = document.getElementById('debugMenu');
+    this.debugToggleGodBtn = document.getElementById('debugToggleGod');
+    this.debugCoinsBtn = document.getElementById('debugAddCoins');
+    this.debugAbilitiesBtn = document.getElementById('debugUnlockAbilities');
+    this.debugTravelBtn = document.getElementById('debugTravelBoost');
+    this.debugShopBtn = document.getElementById('debugOpenShop');
+    this.debug999DamageBtn = document.getElementById('debug999Damage');
+    this.levelCompleteOverlay = document.getElementById('levelCompleteOverlay');
+    this.levelCompleteReplay = document.getElementById('levelCompleteReplay');
     this.movementDebugVisible = false;
+    this.debugMenuVisible = false;
     this.lastMovementStatsHtml = '';
     this.init();
   }
@@ -73,8 +91,12 @@ export class UIManager {
     this.updateAbilityList();
     this.setHomeScreenVisible(true);
     this.setGameOverControlsVisible(false);
+    this.setLevelCompleteVisible(false);
+    this.setDebugMenuVisible(false);
     this.bindHomeEvents();
     this.bindPauseEvents();
+    this.bindDebugMenuEvents();
+    this.bindLevelCompleteEvents();
     this.setupHomeAudio();
   }
 
@@ -98,6 +120,22 @@ export class UIManager {
     this.pauseContinue?.addEventListener('click', () => this.onTogglePause(false));
     this.pauseRetry?.addEventListener('click', () => {
       this.onTogglePause(false);
+      this.onResetGame();
+    });
+  }
+
+  bindDebugMenuEvents() {
+    this.debugToggleGodBtn?.addEventListener('click', () => this.debugActions.toggleGodMode?.());
+    this.debugCoinsBtn?.addEventListener('click', () => this.debugActions.addCoins?.());
+    this.debugAbilitiesBtn?.addEventListener('click', () => this.debugActions.unlockAllAbilities?.());
+    this.debugTravelBtn?.addEventListener('click', () => this.debugActions.travelDistance?.());
+    this.debugShopBtn?.addEventListener('click', () => this.debugActions.forceShop?.());
+    this.debug999DamageBtn?.addEventListener('click', () => this.debugActions.toggle999Damage?.());
+  }
+
+  bindLevelCompleteEvents() {
+    this.levelCompleteReplay?.addEventListener('click', () => {
+      this.setLevelCompleteVisible(false);
       this.onResetGame();
     });
   }
@@ -142,10 +180,28 @@ export class UIManager {
     this.gameOverControls.classList.toggle('visible', visible);
   }
 
+  setLevelCompleteVisible(visible) {
+    if (!this.levelCompleteOverlay) return;
+    this.levelCompleteOverlay.classList.toggle('hidden', !visible);
+  }
+
+  setDebugMenuVisible(visible) {
+    if (!this.debugMenuEl) return;
+    this.debugMenuEl.classList.toggle('hidden', !visible);
+  }
+
   setPauseOverlay(visible) {
     if (!this.pauseOverlay) return;
     this.pauseOverlay.classList.toggle('visible', visible);
     this.pauseOverlay.classList.toggle('hidden', !visible);
+  }
+
+  toggleDebugMenu(force) {
+    const next = typeof force === 'boolean' ? force : !this.debugMenuVisible;
+    if (next === this.debugMenuVisible) return this.debugMenuVisible;
+    this.debugMenuVisible = next;
+    this.setDebugMenuVisible(next);
+    return this.debugMenuVisible;
   }
 
   toggleMovementOverlay(force) {

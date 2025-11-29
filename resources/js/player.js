@@ -8,7 +8,7 @@ export const PLAYER_CONFIG = {
   jumpBoostThreshold: 30,
   jumpBoostMultiplier: 1.5,
   maxHealth: 30,
-  startingHealth: 10,
+  startingHealth: 1,
   invulnerability: 1,
 };
 
@@ -238,7 +238,7 @@ function attemptSlimeFling({
     const fallbackDir = sharpAirFlip ? -directionInput : 1;
     const direction = player.flingDirection || Math.sign(prevVX) || fallbackDir;
     spawnSlimeGlob(direction, charge);
-    setSlimeFlingCooldown(0.25);
+    setSlimeFlingCooldown(6);
     player.flingCharge = 0;
   }
 }

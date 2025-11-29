@@ -1,6 +1,7 @@
 export const AUDIO_TRACKS = {
   music: 'resources/audio/Time To Slime.mp3',
   home: 'resources/audio/The Lonely Slime.mp3',
+  bossMusic: 'resources/audio/From Nothing - Boss Battle 1.mp3',
   jump: 'resources/audio/a-jump.mp3',
   death: 'resources/audio/dead-slime.mp3',
   corrosion: 'resources/audio/plaform-corrosion.mp3',
@@ -8,12 +9,14 @@ export const AUDIO_TRACKS = {
   chunk: 'resources/audio/slime-chunk-pick-up.mp3',
   gameOver: 'resources/audio/Game Over.mp3',
   hit: 'resources/audio/slime-hit.mp3',
+  bossRoar: 'resources/audio/Slime-Boss-Roar.mp3',
 };
 
 export class AudioManager {
   constructor(paths = AUDIO_TRACKS, muteToggle) {
     this.music = this.create(paths.music, { loop: true, volume: 0.2 });
     this.home = this.create(paths.home, { loop: true, volume: 0.2 });
+    this.bossMusic = this.create(paths.bossMusic, { loop: true, volume: 0.25 });
     this.jump = this.create(paths.jump, { volume: 0.2 });
     this.death = this.create(paths.death, { volume: 0.75 });
     this.corrosion = this.create(paths.corrosion, { volume: 0.36, loop: true });
@@ -21,10 +24,23 @@ export class AudioManager {
     this.chunk = this.create(paths.chunk, { volume: 0.35 });
     this.gameOver = this.create(paths.gameOver, { volume: 0.5 });
     this.hit = this.create(paths.hit, { volume: 0.55 });
+    this.bossRoar = this.create(paths.bossRoar, { volume: 0.85 });
     this.muteToggle = muteToggle;
     this.musicStarted = false;
     this.muted = false;
-    this.trackNames = ['home', 'music', 'jump', 'death', 'corrosion', 'coin', 'chunk', 'gameOver', 'hit'];
+    this.trackNames = [
+      'home',
+      'music',
+      'bossMusic',
+      'jump',
+      'death',
+      'corrosion',
+      'coin',
+      'chunk',
+      'gameOver',
+      'hit',
+      'bossRoar',
+    ];
     this.allowMusicResume = true;
     if (this.muteToggle) {
       this.muteToggle.addEventListener('click', () => this.toggleMute());
@@ -135,5 +151,17 @@ export class AudioManager {
 
   stopHomeMusic() {
     this.stopLoop('home');
+  }
+
+  playBossMusic() {
+    this.stopLoop('music');
+    this.stopLoop('home');
+    if (this.muted) return;
+    this.bossMusic.currentTime = 0;
+    this.bossMusic.play().catch(() => {});
+  }
+
+  stopBossMusic() {
+    this.stopLoop('bossMusic');
   }
 }

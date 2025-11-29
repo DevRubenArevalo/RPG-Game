@@ -33,7 +33,7 @@ export const UPGRADES = [
     desc: 'Gain a magnetic aura that pulls chunks and coins from two platforms away.',
     artClass: 'tile-art--coins',
     cost: { coins: 150 },
-    magnetRange: 96,
+    magnetRange: 192,
   },
   {
     id: 'spiked_shoes',
