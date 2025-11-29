@@ -169,6 +169,7 @@ export function updateEnemies({
   PROJECTILE_SPEED,
   spikedShoes = false,
   onBossDefeated,
+  onBossShieldActivated,
   debug999Damage = false,
 }) {
   for (let i = enemies.length - 1; i >= 0; i--) {
@@ -187,6 +188,7 @@ export function updateEnemies({
         ACID_TICK_INTERVAL,
         enemyProjectiles,
         debug999Damage,
+        onBossShieldActivated,
       });
     } else {
     const attachToPlatform = (plat) => {
@@ -478,6 +480,7 @@ function updateBossEnemy(enemy, dt, {
   ACID_TICK_INTERVAL,
   enemyProjectiles,
   debug999Damage = false,
+  onBossShieldActivated,
 }) {
   // Instant boss defeat when 999 damage mode is active
   if (debug999Damage && enemy.awake) {
@@ -503,6 +506,7 @@ function updateBossEnemy(enemy, dt, {
   // Check for health bar depletion and trigger invulnerability
   if (currentHealthBar < enemy.lastHealthBar) {
     enemy.invulnerabilityTimer = 10; // 10 second invulnerability
+    onBossShieldActivated?.(enemy);
   }
   enemy.lastHealthBar = currentHealthBar;
   

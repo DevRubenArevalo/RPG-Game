@@ -65,8 +65,9 @@ export function checkBossCollision(boss, rect) {
     // Square mode - use full rectangle collision (no inset)
     return overlap(boss, rect);
   } else {
-    // Circle mode - use full circle collision
-    const radius = boss.w / 2;
+    // Circle mode - use blended circle collision based on morphBlend
+    const blend = Math.max(0, Math.min(1, boss.morphBlend ?? (boss.morphMode === 'square' ? 1 : 0)));
+    const radius = (boss.w / 2) * (1 - blend);
     const centerX = boss.x + boss.w / 2;
     const centerY = boss.y + boss.h / 2;
     return circleRectCollision(centerX, centerY, radius, rect);

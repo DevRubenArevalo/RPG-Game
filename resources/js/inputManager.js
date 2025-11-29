@@ -69,13 +69,12 @@ export class InputManager {
       return;
     }
     if (key === 'l') {
-      if (player.x < 20000) {
-        player.x = 20000;
+      if (player.x < 19000) {
+        player.x = 19000;
         player.prevX = player.x;
         player.prevY = player.y;
         player.farthest = Math.max(player.farthest, player.x);
       }
-      this.triggerBossCutscene?.();
       return;
     }
     if (key === 'j') {

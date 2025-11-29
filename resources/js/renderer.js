@@ -352,11 +352,38 @@ export class Renderer {
   drawDefeatCinematicElements(defeatCinematic) {
     const { ctx, canvas } = this;
     
-    // Draw explosion particles
+    // Draw white flash first (background)
+    if (this.state.whiteFlash) {
+      const flash = this.state.whiteFlash;
+      const fadeStart = flash.fadeStart || 0;
+      const timeSinceFadeStart = flash.timer - fadeStart;
+      const fadeDuration = flash.duration - fadeStart;
+      
+      // Two-phase fade: quick peak, then slow fade
+      let alpha;
+      if (flash.timer < fadeStart) {
+        // Initial bright white phase
+        alpha = Math.min(flash.timer / fadeStart, 1);
+      } else {
+        // Smooth fade out phase
+        alpha = Math.max(0, 1 - (timeSinceFadeStart / fadeDuration));
+      }
+      
+      // Only draw if alpha is greater than 0
+      if (alpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+    }
+    
+    // Draw explosion particles (white, subtle)
     ctx.save();
     defeatCinematic.explosionParticles.forEach((p) => {
-      const alpha = p.life / p.maxLife;
-      ctx.globalAlpha = alpha * 0.8;
+      const alpha = (p.life / p.maxLife) * 0.6;
+      ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
@@ -364,14 +391,21 @@ export class Renderer {
     });
     ctx.restore();
     
-    // Draw white flash
-    if (this.state.whiteFlash) {
-      const flash = this.state.whiteFlash;
-      const alpha = Math.max(0, 1 - (flash.timer / flash.duration));
+    // Draw rain collection counter during rain phase and collection
+    if (defeatCinematic.phase === 'rain' || (defeatCinematic.rainItemsSpawned > 0 && defeatCinematic.rainItemsCollected < defeatCinematic.rainItemsSpawned)) {
       ctx.save();
-      ctx.globalAlpha = alpha * 0.7;
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.font = 'bold 36px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const counterText = `${defeatCinematic.rainItemsCollected} / ${defeatCinematic.rainItemsSpawned} Items Collected`;
+      ctx.fillText(counterText, canvas.width / 2, canvas.height * 0.15);
+      
+      // Show current phase for debugging
+      ctx.font = '14px Arial';
+      ctx.fillStyle = '#35d0ba';
+      ctx.fillText(`Phase: ${defeatCinematic.phase}`, canvas.width / 2, canvas.height * 0.22);
+      
       ctx.restore();
     }
   }

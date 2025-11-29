@@ -203,6 +203,7 @@ function update(dt) {
     PROJECTILE_SPEED,
     spikedShoes: state.upgrades.spiked_shoes,
     onBossDefeated: handleBossDefeat,
+    onBossShieldActivated: handleBossShieldActivated,
     debug999Damage: state.debug999Damage,
   });
   if (!state.bossFightActive) {
@@ -496,6 +497,25 @@ function spawnSlimeChunks(enemy) {
 }
 }
 
+function spawnBossChunksOnHealthBarDepletion(boss, chunkCount = 10) {
+  // Drop chunks in a burst pattern around the boss
+  for (let i = 0; i < chunkCount; i++) {
+    const angle = (i / chunkCount) * Math.PI * 2; // Full circle
+    const speed = 140 + Math.random() * 100;
+    slimeChunks.push({
+      x: boss.x + boss.w / 2 - 9,
+      y: boss.y + boss.h / 2,
+      w: 18,
+      h: 14,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 50, // Slight upward bias
+      collected: false,
+    });
+  }
+  // Play chunk spawn sound
+  playChunkSound();
+}
+
 function spawnCoins(enemy) {
   let count;
   if (enemy.maxHealth >= 30) {
@@ -661,6 +681,12 @@ function updateGlobs(dt) {
 function updateChunks(dt) {
   for (let i = slimeChunks.length - 1; i >= 0; i--) {
     const chunk = slimeChunks[i];
+    
+    // Skip rain items - they're handled by updateDefeatRain
+    if (chunk.rainItem && state.defeatCinematic) {
+      continue;
+    }
+    
     chunk.magnetActive = false;
     chunk.vy += world.gravity * 0.9 * dt;
     chunk.x += chunk.vx * dt;
@@ -713,6 +739,12 @@ function updateChunks(dt) {
 function updateCoins(dt) {
   for (let i = coins.length - 1; i >= 0; i--) {
     const coin = coins[i];
+    
+    // Skip rain items - they're handled by updateDefeatRain
+    if (coin.rainItem && state.defeatCinematic) {
+      continue;
+    }
+    
     coin.magnetActive = false;
     coin.vy += world.gravity * 0.9 * dt;
     coin.x += coin.vx * dt;
@@ -805,8 +837,25 @@ function updateEnemyProjectiles(dt) {
         if (overlap(enemy, proj)) {
           // Don't damage boss if invulnerable
           if (!(enemy.isBoss && enemy.invulnerabilityTimer > 0)) {
+            const prevHealth = enemy.health;
             enemy.health -= proj.damage ?? 1;
             spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, proj.damage ?? 1, `enemy-${enemy.id}`);
+            
+            // Boss health bar depletion drops chunks
+            if (enemy.isBoss && prevHealth > 0) {
+              const maxHealth = enemy.maxHealth || 160;
+              const perRow = Math.ceil(maxHealth / 4); // 40 for 160 health
+              
+              // Check each health bar boundary (120, 80, 40, 0)
+              for (let bar = 1; bar <= 4; bar++) {
+                const threshold = maxHealth - (bar * perRow);
+                // If health crossed this boundary downward, drop chunks
+                if (prevHealth > threshold && enemy.health <= threshold) {
+                  spawnBossChunksOnHealthBarDepletion(enemy, 10);
+                  console.log(`💚 Boss health bar ${bar} depleted! Health: ${Math.round(enemy.health)}/${maxHealth}`);
+                }
+              }
+            }
           }
           if (enemy.health <= 0) {
             playEnemyDeathSound();
@@ -1100,6 +1149,7 @@ function updateDefeatCinematic(dt) {
     case 'pause': {
       if (def.timer >= def.pauseDuration) {
         console.log('⏸️  PAUSE COMPLETE → PAN PHASE');
+        console.log(`📍 Boss position: x=${boss?.x ?? 'N/A'}, y=${boss?.y ?? 'N/A'}, w=${boss?.w ?? 'N/A'}`);
         def.phase = 'pan';
         def.timer = 0;
       }
@@ -1107,13 +1157,23 @@ function updateDefeatCinematic(dt) {
     }
     
     case 'pan': {
+      if (!boss) break; // Safety check
+      
       const progress = Math.min(1, def.timer / def.panDuration);
       const currentZoom = lerp(1, 1.3, progress);
       const zoomedCanvasWidth = canvas.width / currentZoom;
       
-      const maxCameraX = Math.max(0, world.width - zoomedCanvasWidth);
+      // Calculate where the boss center should be on screen
       const bossCenter = boss.x + boss.w / 2;
-      const targetCam = clamp(bossCenter - zoomedCanvasWidth / 2, 0, maxCameraX);
+      
+      // Target: center the boss horizontally on screen
+      const idealCameraX = bossCenter - zoomedCanvasWidth / 2;
+      const maxCameraX = Math.max(0, world.width - zoomedCanvasWidth);
+      const targetCam = clamp(idealCameraX, 0, maxCameraX);
+      
+      if (def.timer === 0) {
+        console.log(`🎬 PAN START - Boss center: ${bossCenter.toFixed(0)}, Canvas width (zoomed): ${zoomedCanvasWidth.toFixed(0)}, Target camera: ${targetCam.toFixed(0)}`);
+      }
       
       state.cinematicCameraX = lerp(camera.x, targetCam, progress);
       state.cameraZoomTarget = currentZoom;
@@ -1162,6 +1222,7 @@ function updateDefeatCinematic(dt) {
       
       if (def.timer >= def.explosionDuration) {
         console.log('✨ EXPLOSION COMPLETE → RAIN PHASE (Game Resume)');
+        state.whiteFlash = null;
         def.phase = 'rain';
         def.timer = 0;
         boss.dead = true;
@@ -1219,25 +1280,26 @@ function updateDefeatCinematic(dt) {
         console.log('📹 Camera reset complete - Back to player');
       }
       
-      // Spawn rain items rapidly within first 5 seconds (cap at 40 total)
-      if (def.timer < 5) {
+      // Keep spawning rain items until 40 are collected (spawn until we have 40 spawned, then wait for collection)
+      if (def.rainItemsSpawned < 40) {
         def.rainSpawnTimer += dt;
         const itemsToSpawn = Math.floor(def.rainSpawnTimer * def.rainSpawnRate);
         if (itemsToSpawn > 0 && def.rainItemsSpawned < 40) {
           const canSpawn = Math.min(itemsToSpawn, 40 - def.rainItemsSpawned);
-          console.log(`🌧️  Rain phase: spawning ${canSpawn} items (timer: ${def.rainSpawnTimer.toFixed(2)}, rate: ${def.rainSpawnRate.toFixed(2)}, total: ${def.rainItemsSpawned}/${40})`);
+          console.log(`🌧️  Spawning ${canSpawn} items. Before: ${def.rainItemsSpawned}, spawn rate: ${def.rainSpawnRate}/sec`);
           for (let i = 0; i < canSpawn; i++) {
             spawnSingleRainItem(def);
           }
+          console.log(`   After spawn: ${def.rainItemsSpawned}/40`);
           def.rainSpawnTimer -= itemsToSpawn / def.rainSpawnRate;
         }
       }
       
       updateDefeatRain(def, dt);
       
-      // Check if all rain items collected (no time limit, just wait for collection)
-      const totalRainItems = state.slimeChunks.filter(c => c.rainItem).length + state.coins.filter(c => c.rainItem).length;
-      if (totalRainItems === 0 && def.rainItemsSpawned > 0) {
+      // Only exit rain phase when all 40 items have been collected
+      console.log(`🌧️  Rain Status: collected=${def.rainItemsCollected}, spawned=${def.rainItemsSpawned}`);
+      if (def.rainItemsCollected >= 40 && def.rainItemsSpawned >= 40) {
         console.log(`🎉 RAIN COMPLETE → All items collected (${def.rainItemsCollected}/${def.rainItemsSpawned})`);
         finishDefeatCinematic();
       }
@@ -1245,28 +1307,31 @@ function updateDefeatCinematic(dt) {
     }
   }
   
+  // Do NOT check completion outside rain phase - stay in rain until all collected
+  
   state.cameraZoom += (state.cameraZoomTarget - state.cameraZoom) * Math.min(1, dt * 5);
 }
 
 function triggerBossExplosion(def, boss) {
-  state.whiteFlash = { timer: 0, duration: 0.15 };
+  // Extended white flash for smooth fade - no rapid flashing
+  state.whiteFlash = { timer: 0, duration: 0.6, fadeStart: 0.2 };
   
-  const particleCount = 40;
+  const particleCount = 60;
   const centerX = boss.x + boss.w / 2;
   const centerY = boss.y + boss.h / 2;
   
   for (let i = 0; i < particleCount; i++) {
     const angle = (Math.random() * Math.PI * 2);
-    const speed = 200 + Math.random() * 400;
+    const speed = 200 + Math.random() * 500;
     def.explosionParticles.push({
       x: centerX,
       y: centerY,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 0.8,
-      maxLife: 0.8,
-      size: 4 + Math.random() * 8,
-      color: '#20d9d9',
+      vy: Math.sin(angle) * speed - 50,
+      life: 1.2,
+      maxLife: 1.2,
+      size: 3 + Math.random() * 12,
+      color: '#ffffff',
     });
   }
 }
@@ -1296,7 +1361,7 @@ function spawnSingleRainItem(def) {
       h: 14,
       vx: (Math.random() - 0.5) * 80,
       vy: initialVy,
-      life: 25,
+      life: 60,
       rainItem: true,
     });
     def.rainItemsSpawned++;
@@ -1309,7 +1374,7 @@ function spawnSingleRainItem(def) {
       h: 16,
       vx: (Math.random() - 0.5) * 80,
       vy: initialVy,
-      life: 25,
+      life: 60,
       rainItem: true,
     });
     def.rainItemsSpawned++;
@@ -1342,6 +1407,7 @@ function updateDefeatRain(def, dt) {
       playChunkSound();
       if (chunk.rainItem) {
         def.rainItemsCollected++;
+        console.log(`💚 Rain chunk collected! (${def.rainItemsCollected}/${def.rainItemsSpawned}) - def object:`, def);
       }
       state.slimeChunks.splice(i, 1);
       continue;
@@ -1373,6 +1439,7 @@ function updateDefeatRain(def, dt) {
       playCoinSound();
       if (coin.rainItem) {
         def.rainItemsCollected++;
+        console.log(`💛 Rain coin collected! (${def.rainItemsCollected}/${def.rainItemsSpawned}) - def object:`, def);
       }
       state.coins.splice(i, 1);
       continue;
@@ -1427,6 +1494,12 @@ function finishDefeatCinematic() {
   audio.startMusic?.();
 }
 
+function handleBossShieldActivated(boss) {
+  // Drop 10 chunks when boss activates shield
+  spawnBossChunksOnHealthBarDepletion(boss, 10);
+  console.log('🛡️ Boss shield activated! Dropped 10 chunks');
+}
+
 function handleBossDefeat() {
   if (state.levelComplete || state.defeatCinematic) return;
   console.log('🔴 BOSS DEFEAT TRIGGERED');
@@ -1443,7 +1516,7 @@ function handleBossDefeat() {
     explosionDuration: 0.3,
     rainDuration: 15,
     rainStartY: -100,
-    rainSpawnRate: 40 / 5, // 40 items over 5 seconds = 8 per second
+    rainSpawnRate: 40 / 2, // 40 items over 2 seconds = 20 per second
     rainSpawnTimer: 0,
     explosionParticles: [],
     rainItemsSpawned: 0,
