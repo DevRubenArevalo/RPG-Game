@@ -3,14 +3,16 @@ import { UPGRADES } from './upgrades.js';
 const BASE_ABILITIES = [
   {
     id: 'acid_trail',
-    title: 'Acid Trail',
-    desc: 'Moving leaves a damaging trail that stacks damage.',
+    name: 'Acid Trail',
+    description: 'Leave a trail of corrosive slime as you move. Melt platforms and enemies.',
+    type: 'ability'
   },
   {
     id: 'swallow_shield',
-    title: 'Swallow Shield',
-    desc: 'Duck + F to spend 10 HP for a one-hit shield.',
-  },
+    name: 'Swallow Shield',
+    description: 'Consume enemies to gain temporary protection and boost your size.',
+    type: 'ability'
+  }
 ];
 
 const HOME_INFO = {
@@ -143,10 +145,9 @@ export class UIManager {
   handleStartClick() {
     this.updateHomeInfoContent('howto');
     if (!this.state.homeScreenActive) return;
-    this.state.homeScreenActive = false;
-    this.setHomeScreenVisible(false);
+    console.log('🎮 Home Start button clicked - calling onResetGame()');
     this.audio.stopHomeMusic?.();
-    this.audio.startMusic?.();
+    this.onResetGame();
   }
 
   updateHomeInfoContent(section = 'howto') {

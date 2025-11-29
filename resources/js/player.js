@@ -37,12 +37,16 @@ export class Player {
     this.jumpSpeed = overrides.jumpSpeed ?? this.config.jumpSpeed;
     this.grounded = overrides.grounded ?? false;
     this.ducking = overrides.ducking ?? false;
+    this.duckTransition = overrides.duckTransition ?? 0;  // 0 = fully up, 1 = fully down
     this.alive = overrides.alive ?? true;
     this.squish = overrides.squish ?? 0;
     this.maxHealth = overrides.maxHealth ?? this.config.maxHealth;
     this.health = overrides.health ?? this.config.startingHealth;
     this.invulnTimer = overrides.invulnTimer ?? 0;
-    this.shieldActive = overrides.shieldActive ?? false;
+    this.mutationLevel = overrides.mutationLevel ?? 0;
+    this.acidTrailChunks = overrides.acidTrailChunks ?? 0;
+    this.hasAcidTrail = overrides.hasAcidTrail ?? false;
+    this.mutationTimer = overrides.mutationTimer ?? 0;
     this.swallowHeld = overrides.swallowHeld ?? false;
     this.farthest = overrides.farthest ?? 0;
     this.coins = overrides.coins ?? 0;
@@ -73,7 +77,7 @@ export class Player {
 }
 
 export function updatePlayerMovement(player, dt, input, world, {
-  swallowShield,
+  mutateSlime,
   applyPlayerScale,
   spawnSlimeGlob,
   playJumpSound,
@@ -89,8 +93,8 @@ export function updatePlayerMovement(player, dt, input, world, {
   const duckJustPressed = duck && !player.duckInputPrev;
   player.duckInputPrev = duck;
   if (duck && swallow) {
-    if (!player.swallowHeld && swallowShield) {
-      swallowShield();
+    if (!player.swallowHeld && mutateSlime) {
+      mutateSlime();
     }
     player.swallowHeld = true;
   } else {
@@ -128,6 +132,16 @@ export function updatePlayerMovement(player, dt, input, world, {
   const wallActive = allowWallMode && duck && player.grounded && !dropActive;
   player.wallMode = wallActive;
   player.ducking = duck && player.grounded;
+  
+  // Smooth duck transition animation (0.25 seconds)
+  const targetDuckTransition = player.ducking ? 1 : 0;
+  const duckTransitionSpeed = 1 / 0.25;  // 4 units per second for 0.25s transition
+  if (player.duckTransition < targetDuckTransition) {
+    player.duckTransition = Math.min(targetDuckTransition, player.duckTransition + dt * duckTransitionSpeed);
+  } else if (player.duckTransition > targetDuckTransition) {
+    player.duckTransition = Math.max(targetDuckTransition, player.duckTransition - dt * duckTransitionSpeed);
+  }
+  
   const prevBottom = player.y + player.h;
   const prevCenter = player.x + player.w / 2;
   const normalScale = 0.45 + (player.health / player.maxHealth) * 0.75;
@@ -161,7 +175,9 @@ export function updatePlayerMovement(player, dt, input, world, {
     if (player.vy > 0) player.vy = 0;
   }
 
-  player.vx = Math.max(-player.maxSpeed, Math.min(player.maxSpeed, player.vx));
+  // Apply 50% speed reduction when ducking
+  const duckSpeedMultiplier = player.ducking ? 0.5 : 1;
+  player.vx = Math.max(-player.maxSpeed * duckSpeedMultiplier, Math.min(player.maxSpeed * duckSpeedMultiplier, player.vx));
   if (left || right) {
     player.flingCharge = Math.max(player.flingCharge, Math.abs(prevVX));
     const currentDir = Math.sign(player.vx || prevVX);

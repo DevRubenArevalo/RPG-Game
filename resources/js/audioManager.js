@@ -10,6 +10,7 @@ export const AUDIO_TRACKS = {
   gameOver: 'resources/audio/Game Over.mp3',
   hit: 'resources/audio/slime-hit.mp3',
   bossRoar: 'resources/audio/Slime-Boss-Roar.mp3',
+  slimeCreation: 'resources/audio/slime-being-created.mp3',
 };
 
 export class AudioManager {
@@ -25,6 +26,7 @@ export class AudioManager {
     this.gameOver = this.create(paths.gameOver, { volume: 0.5 });
     this.hit = this.create(paths.hit, { volume: 0.55 });
     this.bossRoar = this.create(paths.bossRoar, { volume: 0.85 });
+    this.slimeCreation = this.create(paths.slimeCreation, { volume: 0.6 });
     this.muteToggle = muteToggle;
     this.musicStarted = false;
     this.muted = false;
@@ -40,6 +42,7 @@ export class AudioManager {
       'gameOver',
       'hit',
       'bossRoar',
+      'slimeCreation',
     ];
     this.allowMusicResume = true;
     if (this.muteToggle) {

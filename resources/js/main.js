@@ -114,11 +114,25 @@ function update(dt) {
     statusEl.textContent = 'Home - click Start to run';
     return;
   }
+  
+  // Handle opening cutscene at game start
+  if (state.openingCutscene) {
+    updateOpeningCutscene(dt);
+    statusEl.textContent = 'Opening Cutscene - Explore the poison pool (Press ENTER to continue)';
+    return;
+  }
+  
   if (state.gameOver) {
     gameOverState.animTime += dt;
     gameOverManager.updateTears(dt);
     statusEl.textContent = 'Game Over - press Y to continue';
     return;
+  }
+  
+  // Log first frame to confirm update is being called
+  if (!state.cutsceneDebugLogged) {
+    console.log('ℹ️ First update frame after cutscene check - state.openingCutscene:', state.openingCutscene);
+    state.cutsceneDebugLogged = true;
   }
   
   // Always update cinematic even if paused (for defeat cinematic)
@@ -140,6 +154,7 @@ function update(dt) {
     state.slimeFlingCooldownMax = 0;
   }
   player.invulnTimer = Math.max(0, player.invulnTimer - dt);
+  player.mutationTimer = Math.max(0, player.mutationTimer - dt);
   const best = highScores.length ? Math.floor(highScores[0]) : 0;
   statusEl.textContent = `HP ${player.health}/${player.maxHealth} | Dist ${Math.floor(player.farthest)} | Coins ${Math.floor(player.coins)} | Top ${best}`;
   const input = {
@@ -151,7 +166,7 @@ function update(dt) {
   };
   const allowMovement = !state.shopActive && !state.levelComplete;
   updatePlayerMovement(player, dt, input, world, {
-    swallowShield,
+    mutateSlime,
     applyPlayerScale: () => playerManager.applyScale(),
     spawnSlimeGlob,
     playJumpSound,
@@ -210,6 +225,9 @@ function update(dt) {
       debug999Damage: state.debug999Damage,
     });
   }
+  
+  // Check poison pool healing
+  checkPlayerInPoisonPool(dt);
   if (!state.bossFightActive) {
     checkTraps();
   }
@@ -555,7 +573,7 @@ for (let i = 0; i < count; i++) {
 function updateTrail(dt) {
   let corrosionActive = false;
   trailTimer -= dt;
-  if (trailTimer <= 0) {
+  if (trailTimer <= 0 && state.upgrades.acid_trail) {
     spawnTrailSegment();
     trailTimer = TRAIL_INTERVAL;
   }
@@ -955,22 +973,18 @@ function updateDamageNumbers(dt) {
 
 function hurtPlayer(amount, sourceX, source) {
   if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
-  if (player.shieldActive) {
-    player.shieldActive = false;
-  } else {
   player.health -= amount;
   spawnDamageNumber(player.x + player.w / 2, player.y, amount, 'player');
-}
-playHitSound();
-player.invulnTimer = 1;
-const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
-player.vx = dir * player.maxSpeed * 0.5;
-player.vy = -player.jumpSpeed * 0.6;
-player.grounded = false;
-player.squish = Math.min(0.35, player.squish + 0.22);
-player.x += dir * player.w * 0.5;
-clampPlayerHorizontal();
-playerManager.applyScale();
+  playHitSound();
+  player.invulnTimer = 1;
+  const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
+  player.vx = dir * player.maxSpeed * 0.5;
+  player.vy = -player.jumpSpeed * 0.6;
+  player.grounded = false;
+  player.squish = Math.min(0.35, player.squish + 0.22);
+  player.x += dir * player.w * 0.5;
+  clampPlayerHorizontal();
+  playerManager.applyScale();
 if (player.health <= 0) {
   player.health = 0;
   player.alive = false;
@@ -1629,10 +1643,22 @@ function playerDamagePerTick() {
   return 1;
 }
 
-function swallowShield() {
-  if (player.health < 11 || player.shieldActive) return;
-  player.health -= 10;
-  player.shieldActive = true;
+function mutateSlime() {
+  // Check if player has at least 5 HP to mutate
+  if (player.health < 5) return;
+  
+  // Increase mutation level
+  player.mutationLevel += 1;
+  
+  // Grant acid trail ability upgrade
+  state.upgrades.acid_trail = true;
+  
+  // Start mutation animation
+  player.mutationTimer = 0.6; // 0.6 second animation
+  
+  // Reduce health to 1
+  player.health = 1;
+  
   playerManager.applyScale();
 }
 
@@ -1708,16 +1734,28 @@ function resetGame(toHome = false) {
   resolvePlatformCollisions(player);
   playerManager.resetMovementState();
   player.farthest = 0;
-  worldController.seedWorld();
   if (toHome) {
     state.homeScreenActive = true;
     uiManager.setHomeScreenVisible(true);
     audio.stopLoop?.('music');
     audio.playHomeMusic?.();
+    worldController.seedWorld();
   } else {
+    console.log('🎮 Starting new game - NOT going to home screen');
     state.homeScreenActive = false;
     uiManager.setHomeScreenVisible(false);
-    audio.startMusic?.();
+    // Don't start music here - cutscene will be silent, then music starts when entering main game
+    // Reset opening cutscene state - DON'T set to null, let initialize() create it
+    console.log('🧹 Clearing cutscene state arrays');
+    state.poisonParticles.length = 0;
+    state.poisonPool = null;
+    state.cutsceneRoomBounds = null;
+    state.cutsceneDebugLogged = false;
+    state.rendererDebugLogged = false;
+    // Initialize opening cutscene (this will set state.openingCutscene)
+    console.log('📍 About to call initializeOpeningCutscene()');
+    initializeOpeningCutscene();
+    console.log('✅ initializeOpeningCutscene() returned, state.openingCutscene:', state.openingCutscene);
   }
 }
 
@@ -1735,4 +1773,576 @@ function triggerBossCinematicTeleport() {
   }
 }
 
+function initializeOpeningCutscene() {
+  console.log('🎬 INITIALIZING OPENING CUTSCENE - START');
+  console.log('  Player position:', { x: player.x, y: player.y });
+  console.log('  World groundY:', world.groundY);
+  
+  // Stop music during cutscene
+  audio.stopLoop?.('music');
+  
+  // Play slime creation sound
+  audio.playEffect?.('slimeCreation');
+  
+  // Start opening cutscene with player spawning from poison pool
+  const cutsceneObj = {
+    phase: 'spawn',  // 'spawn' -> 'explore'
+    timer: 0,
+    spawnDuration: 2.0,  // 2 seconds for player to rise from pool
+  };
+  
+  console.log('  Creating cutsceneObj:', cutsceneObj);
+  state.openingCutscene = cutsceneObj;
+  console.log('  After assignment - state.openingCutscene:', state.openingCutscene);
+  
+  // Position player on the floor for cutscene
+  player.y = world.groundY - player.h;
+  player.vy = 0;
+  player.vx = 0;
+  
+  // Create poison pool on the floor
+  state.poisonPool = {
+    x: player.x - 100,
+    y: world.groundY - 30,  // Sitting on top of the floor
+    w: 200,
+    h: 60,
+    isActive: true,
+    healTimer: 0,
+    healInterval: 2.0,
+  };
+  
+  console.log('🟢 Poison pool created:', state.poisonPool);
+  
+  // Lock camera to cutscene room (prevent scrolling right)
+  state.cutsceneRoomBounds = {
+    minX: 0,
+    maxX: 800,  // Limit exploration to first 800 pixels
+  };
+  
+  console.log('📺 Cutscene room bounds set:', state.cutsceneRoomBounds);
+  
+  // Create slime king statue in the middle-right of the screen
+  const statueX = canvas.width * 0.6;  // Slightly to the right
+  const statueY = world.groundY - 175;  // Pedestal bottom touches ground where player stands
+  
+  state.slimeKingStatue = {
+    x: statueX,
+    y: statueY,
+    w: 80,
+    h: 120,
+    baseColor: '#2d9d7a',  // Teal green for statue
+    crownColor: '#ffd25d',  // Gold for crown
+    glowIntensity: 0,
+    maxGlow: 1.0,
+  };
+  
+  console.log('👑 Slime King Statue created:', state.slimeKingStatue);
+  
+  // Start particle emission from pool
+  startPoisonEmission();
+  console.log('✨ Particle emission started, particles count:', state.poisonParticles.length);
+  console.log('🎬 INITIALIZING OPENING CUTSCENE - END, state.openingCutscene:', state.openingCutscene);
+}
+
+function createPoisonPool() {
+  return {
+    x: player.x - 100,
+    y: world.groundY - 40,
+    w: 200,
+    h: 60,
+    isActive: true,
+    healTimer: 0,
+    healInterval: 2.0,  // 1 HP every 2 seconds
+  };
+}
+
+function startPoisonEmission() {
+  // Emit poison cloud particles from the pool only if player is in it and needs healing
+  if (!state.poisonPool) return;
+  
+  // Only emit particles if player is standing in the pool and health is 5 or below
+  const poolX = state.poisonPool.x;
+  const poolY = state.poisonPool.y;
+  const poolW = state.poisonPool.w;
+  const poolH = state.poisonPool.h;
+  
+  // Check if player is standing in pool (feet collision)
+  const playerFeetY = player.y + player.h;
+  const playerCenterX = player.x + player.w / 2;
+  
+  const playerInPool = playerCenterX > poolX && playerCenterX < poolX + poolW &&
+                       playerFeetY > poolY && playerFeetY < poolY + poolH;
+  
+  // Don't emit if player is not in pool or health is above 5
+  if (!playerInPool || player.health > 5) return;
+  
+  const poolCenterX = poolX + poolW / 2;
+  const poolCenterY = poolY;
+  
+  // Emit 3-5 particles per frame
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 50;
+    
+    state.poisonParticles.push({
+      x: poolCenterX + (Math.random() - 0.5) * 60,
+      y: poolCenterY + (Math.random() - 0.5) * 30,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,  // Bias upward
+      life: 1.0,
+      maxLife: 1.0,
+      size: 3 + Math.random() * 8,
+      color: 'rgba(100, 200, 100, ',  // Green poison color
+    });
+  }
+}
+
+function updatePoisonParticles(dt) {
+  state.poisonParticles = state.poisonParticles.filter(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 20 * dt;  // Gravity
+    p.life -= dt;
+    return p.life > 0;
+  });
+}
+
+function emitRegenerationParticles(player, dt) {
+  // Emit green particles from a distance that move toward the player
+  const particleCount = Math.random() > 0.6 ? 2 : 1;  // 1-2 particles per frame
+  
+  for (let i = 0; i < particleCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spawnDistance = 150 + Math.random() * 100;  // Spawn 150-250 pixels away
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    
+    // Spawn position (far from player)
+    const spawnX = playerCenterX + Math.cos(angle) * spawnDistance;
+    const spawnY = playerCenterY + Math.sin(angle) * spawnDistance;
+    
+    // Velocity toward player
+    const speed = 200 + Math.random() * 100;  // 200-300 speed toward player
+    const dirX = playerCenterX - spawnX;
+    const dirY = playerCenterY - spawnY;
+    const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
+    
+    const particle = {
+      x: spawnX,
+      y: spawnY,
+      targetX: playerCenterX,
+      targetY: playerCenterY,
+      vx: (dirX / dirLength) * speed,
+      vy: (dirY / dirLength) * speed,
+      life: 1.0,  // 1 second lifetime
+      maxLife: 1.0,
+      size: 3 + Math.random() * 2,  // 3-5 pixel size
+      type: 'regeneration',
+    };
+    
+    state.regenerationParticles.push(particle);
+  }
+}
+
+function updateRegenerationParticles(dt) {
+  state.regenerationParticles = state.regenerationParticles.filter(p => {
+    // Update velocity to always head toward player in real-time
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    
+    const dirX = playerCenterX - p.x;
+    const dirY = playerCenterY - p.y;
+    const distToPlayer = Math.sqrt(dirX * dirX + dirY * dirY);
+    
+    // Normalize direction and apply speed
+    const speed = 200 + 50;  // Base speed
+    if (distToPlayer > 5) {
+      p.vx = (dirX / distToPlayer) * speed;
+      p.vy = (dirY / distToPlayer) * speed;
+    }
+    
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    return p.life > 0;
+  });
+}
+
+function updateOpeningCutscene(dt) {
+  if (!state.openingCutscene) {
+    console.warn('⚠️ updateOpeningCutscene called but state.openingCutscene is null');
+    return;
+  }
+  
+  const cs = state.openingCutscene;
+  cs.timer += dt;
+  
+  if (cs.timer < 0.1) {
+    console.log('🎬 Cutscene update - Phase:', cs.phase, 'Timer:', cs.timer.toFixed(2), 'Player Y:', player.y.toFixed(0));
+  }
+  
+  switch (cs.phase) {
+    case 'spawn': {
+      const progress = Math.min(1, cs.timer / cs.spawnDuration);
+      
+      if (cs.timer < 0.1) {
+        console.log('🌊 SPAWN phase - Progress:', progress.toFixed(3), 'Timer:', cs.timer.toFixed(3), 'spawnDuration:', cs.spawnDuration);
+      }
+      
+      // Rise player up from poison pool
+      const poolY = state.poisonPool.y - player.h;  // Player standing on pool
+      const startY = world.groundY - player.h;  // Player on floor
+      player.y = startY + (poolY - startY) * progress;
+      
+      // Bobbing motion as rising
+      const bobAmount = Math.sin(progress * Math.PI * 4) * 15;
+      player.y += bobAmount;
+      
+      // Grow player from 0.1 scale to 1.0 scale during spawn
+      const scaleProgress = Math.min(1, progress * 1.5);  // Finish growing before spawn ends
+      player.squish = scaleProgress - 1;  // squish goes from -1 to 0, making scale go from 0 to 1
+      
+      // Store animation progress for health bar rendering
+      state.spawnAnimationProgress = progress;
+      
+      // Freeze player velocity during spawn
+      player.vy = 0;
+      player.vx = 0;
+      player.grounded = false;
+      
+      // Update particles (but don't emit during spawn - pool stays still)
+      updatePoisonParticles(dt);
+      
+      if (cs.timer >= cs.spawnDuration) {
+        console.log('✅ SPAWN phase complete, transitioning to EXPLORE');
+        cs.phase = 'explore';
+        cs.timer = 0;
+        player.y = poolY;
+        player.grounded = false;
+        player.squish = 0;  // Reset to normal size
+        state.spawnAnimationProgress = 1;  // Keep showing full health bar
+      }
+      break;
+    }
+    
+    case 'explore': {
+      if (cs.timer < 0.1) {
+        console.log('🎮 EXPLORE phase started, player can now move');
+      }
+      
+      // Player can now move around freely in the cutscene room
+      // Handle input and movement just like normal game
+      const input = {
+        left: keys.has('arrowleft') || keys.has('a'),
+        right: keys.has('arrowright') || keys.has('d'),
+        jump: keys.has(' ') || keys.has('arrowup') || keys.has('w'),
+        duck: keys.has('arrowdown') || keys.has('s'),
+        swallow: keys.has('f'),
+      };
+      
+      // Update player movement (without world generation or platform collisions)
+      updatePlayerMovement(player, dt, input, world, {
+        mutateSlime,
+        applyPlayerScale: () => playerManager.applyScale(),
+        spawnSlimeGlob,
+        playJumpSound,
+        ensureWorldAhead: () => {}, // Don't spawn world during cutscene
+        resolvePlatformCollisions: () => {
+          // Simple ground collision only - keep player on the floor
+          if (player.y + player.h > world.groundY) {
+            player.y = world.groundY - player.h;
+            player.vy = 0;
+            player.grounded = true;
+          }
+        },
+        getSlimeFlingCooldown: () => state.slimeFlingCooldown,
+        setSlimeFlingCooldown: (value) => {
+          state.slimeFlingCooldown = value;
+          state.slimeFlingCooldownMax = value;
+        },
+        allowMovement: true,
+        allowWallMode: state.upgrades.slime_wall,
+        allowFling: state.upgrades.slime_fling,
+      });
+      
+      // Constrain camera to cutscene room
+      updateCutsceneCamera();
+      
+      // Lock player within cutscene viewport
+      const viewportWidth = canvas.width;
+      const maxPlayerX = viewportWidth - player.w;
+      player.x = Math.max(0, Math.min(player.x, maxPlayerX));
+      
+      // Update trail effects if acid trail is active
+      updateTrail(dt);
+      
+      // Update particles and poison effects
+      updatePoisonParticles(dt);
+      startPoisonEmission();
+      checkPlayerInPoisonPool(dt);
+      
+      // Auto-close dialog if player walks away from interactable
+      autoCloseDialogIfTooFar();
+      
+      break;
+    }
+  }
+}
+
+function updateCutsceneCamera() {
+  // Keep camera locked to cutscene room bounds - no scrolling
+  if (!state.cutsceneRoomBounds) return;
+  
+  // Lock camera at starting position (no movement)
+  camera.x = 0;
+  camera.y = 0;
+}
+
+function exitCutsceneToMainGame() {
+  console.log('🚀 EXITING CUTSCENE TO MAIN GAME');
+  console.log('Before: openingCutscene =', state.openingCutscene);
+  
+  // Transition from cutscene room to main game
+  state.openingCutscene = null;
+  state.cutsceneRoomBounds = null;
+  state.poisonPool = null;  // Remove poison pool from main game
+  state.poisonParticles.length = 0;  // Clear particles
+  state.regenerationParticles.length = 0;  // Clear regeneration particles
+  state.slimeKingStatue = null;  // Remove statue
+  
+  console.log('After: openingCutscene =', state.openingCutscene);
+  
+  // Resume main game music
+  audio.startMusic?.();
+  
+  // Seed the world now that we're entering the main game
+  worldController.seedWorld();
+  console.log('✅ World seeded, main game should start now');
+}
+
+function checkPlayerInPoisonPool(dt) {
+  if (!state.poisonPool) return;
+  
+  const poolX = state.poisonPool.x;
+  const poolY = state.poisonPool.y;
+  const poolW = state.poisonPool.w;
+  const poolH = state.poisonPool.h;
+  
+  // Check if player is standing in pool (feet collision)
+  const playerFeetY = player.y + player.h;
+  const playerCenterX = player.x + player.w / 2;
+  
+  if (playerCenterX > poolX && playerCenterX < poolX + poolW &&
+      playerFeetY > poolY && playerFeetY < poolY + poolH) {
+    
+    // Only heal and show effects if player health is 5 HP or below
+    if (player.health <= 5) {
+      // Player is in poison pool - heal
+      state.poisonPool.healTimer += dt;
+      if (state.poisonPool.healTimer >= state.poisonPool.healInterval) {
+        player.health = Math.min(6, player.health + 1);
+        state.poisonPool.healTimer = 0;
+      }
+      
+      // Emit healing regeneration particles around player
+      emitRegenerationParticles(player, dt);
+      
+      // Emit poison cloud particles from pool
+      startPoisonEmission();
+    }
+  } else {
+    state.poisonPool.healTimer = 0;
+  }
+  
+  // Update all particle types
+  updatePoisonParticles(dt);
+  updateRegenerationParticles(dt);
+}
+
+// Add keyboard listener for cutscene progression and interactions
+window.addEventListener('keydown', (e) => {
+  if (state.openingCutscene) {
+    if (e.key === 'Enter') {
+      console.log('↩️  ENTER key pressed during cutscene, transitioning to main game');
+      e.preventDefault();
+      exitCutsceneToMainGame();
+    } else if (e.key === 'f' || e.key === 'F') {
+      console.log('🎮 F key pressed, checking for interactions');
+      e.preventDefault();
+      checkAndInteract();
+    }
+  }
+});
+
+function checkAndInteract() {
+  if (!state.openingCutscene || !state.player) return;
+  
+  const player = state.player;
+  const playerCenterX = player.x + player.w / 2;
+  const playerCenterY = player.y + player.h / 2;
+  
+  // Check statue interaction
+  if (state.slimeKingStatue) {
+    const statue = state.slimeKingStatue;
+    const statueCenterX = statue.x + statue.w / 2;
+    const statueCenterY = statue.y + statue.h / 2;
+    
+    const statueDistance = Math.sqrt(
+      Math.pow(playerCenterX - statueCenterX, 2) + 
+      Math.pow(playerCenterY - statueCenterY, 2)
+    );
+    
+    if (statueDistance < 150) {
+      toggleDialog('statue');
+      return;
+    }
+  }
+  
+  // Check poison pool interaction
+  if (state.poisonPool) {
+    const pool = state.poisonPool;
+    const poolCenterX = pool.x + pool.w / 2;
+    const poolCenterY = pool.y + pool.h / 2;
+    
+    const poolDistance = Math.sqrt(
+      Math.pow(playerCenterX - poolCenterX, 2) + 
+      Math.pow(playerCenterY - poolCenterY, 2)
+    );
+    
+    if (poolDistance < 120) {
+      toggleDialog('pool');
+      return;
+    }
+  }
+}
+
+function toggleDialog(objectType) {
+  // If dialog is open for a different object, close it first
+  if (state.pedestalTextVisible && state.currentInteractable !== objectType) {
+    state.pedestalTextVisible = false;
+    state.pedestalTextDialog = null;
+    state.currentInteractable = null;
+    state.dialogIndex = 0;
+  }
+  
+  // If dialog is open for the same object, advance to next line
+  if (state.pedestalTextVisible && state.currentInteractable === objectType) {
+    let dialogLines = [];
+    
+    if (objectType === 'statue') {
+      dialogLines = [
+        "Slime King the great!",
+        "Born of lowly slime in the lowly slime pools nearby.",
+        "It is said slimes can be soothed by slime pools.",
+        "Even some slime mutate when consuming enough slime."
+      ];
+    } else if (objectType === 'pool') {
+      dialogLines = [
+        "You see a poison marsh that birthed you..."
+      ];
+    }
+    
+    state.dialogIndex++;
+    
+    if (state.dialogIndex >= dialogLines.length) {
+      // End of dialog, close it
+      state.pedestalTextVisible = false;
+      state.pedestalTextDialog = null;
+      state.currentInteractable = null;
+      state.dialogIndex = 0;
+    } else {
+      // Show next line
+      showDialogLine(objectType, state.dialogIndex, dialogLines);
+    }
+  } else {
+    // Open dialog for the object - show first line
+    let dialogLines = [];
+    
+    if (objectType === 'statue') {
+      dialogLines = [
+        "Slime King the great!",
+        "Born of lowly slime in the lowly slime pools nearby.",
+        "It is said slimes can be soothed by slime pools.",
+        "Even some slime mutate when consuming enough slime."
+      ];
+    } else if (objectType === 'pool') {
+      dialogLines = [
+        "You see a poison marsh that birthed you..."
+      ];
+    }
+    
+    state.dialogIndex = 0;
+    showDialogLine(objectType, 0, dialogLines);
+    state.pedestalTextVisible = true;
+    state.currentInteractable = objectType;
+  }
+}
+
+function showDialogLine(objectType, lineIndex, dialogLines) {
+  if (lineIndex >= dialogLines.length) return;
+  
+  let dialogContent = {};
+  const text = dialogLines[lineIndex];
+  
+  if (objectType === 'statue') {
+    const statue = state.slimeKingStatue;
+    dialogContent = {
+      x: statue.x + statue.w / 2,
+      y: statue.y - 80,
+      text: text,
+      maxWidth: 200
+    };
+  } else if (objectType === 'pool') {
+    const pool = state.poisonPool;
+    dialogContent = {
+      x: pool.x + pool.w / 2,
+      y: pool.y - 40,
+      text: text,
+      maxWidth: 180
+    };
+  }
+  
+  state.pedestalTextDialog = dialogContent;
+}
+
+function autoCloseDialogIfTooFar() {
+  if (!state.pedestalTextVisible || !state.currentInteractable || !state.player) return;
+  
+  const player = state.player;
+  const playerCenterX = player.x + player.w / 2;
+  const playerCenterY = player.y + player.h / 2;
+  
+  let objectCenterX, objectCenterY, interactRange;
+  
+  // Get the center and range of the current interactable
+  if (state.currentInteractable === 'statue' && state.slimeKingStatue) {
+    const statue = state.slimeKingStatue;
+    objectCenterX = statue.x + statue.w / 2;
+    objectCenterY = statue.y + statue.h / 2;
+    interactRange = 150;
+  } else if (state.currentInteractable === 'pool' && state.poisonPool) {
+    const pool = state.poisonPool;
+    objectCenterX = pool.x + pool.w / 2;
+    objectCenterY = pool.y + pool.h / 2;
+    interactRange = 120;
+  } else {
+    return;
+  }
+  
+  // Calculate distance
+  const distance = Math.sqrt(
+    Math.pow(playerCenterX - objectCenterX, 2) + 
+    Math.pow(playerCenterY - objectCenterY, 2)
+  );
+  
+  // Close dialog if player is too far away
+  if (distance >= interactRange) {
+    state.pedestalTextVisible = false;
+    state.pedestalTextDialog = null;
+    state.currentInteractable = null;
+    state.dialogIndex = 0;
+  }
+}
+
 gameInstance = new Game(update, renderer);
+
