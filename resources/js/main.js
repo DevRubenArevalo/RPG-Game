@@ -179,33 +179,37 @@ function update(dt) {
   updateCoins(dt);
   updateEnemyProjectiles(dt);
   checkBossCollision_Update();
-  updateEnemies({
-    enemies,
-    dt,
-    world,
-    player,
-    platformBounds,
-    findPlatformAt: worldController.findPlatformAt.bind(worldController),
-    findPlatformById: worldController.findPlatformById.bind(worldController),
-    trailSegments,
-    slimeGlobs,
-    enemyProjectiles,
-    spawnSlimeChunks,
-    spawnCoins,
-    playEnemyDeathSound,
-    hurtPlayer,
-    playerDamagePerTick,
-    spawnDamageNumber,
-    ACID_DEBUFF_DURATION,
-    ACID_TICK_INTERVAL,
-    PROJECTILE_INTERVAL,
-    PROJECTILE_MODE_SWITCH,
-    PROJECTILE_SPEED,
-    spikedShoes: state.upgrades.spiked_shoes,
-    onBossDefeated: handleBossDefeat,
-    onBossShieldActivated: handleBossShieldActivated,
-    debug999Damage: state.debug999Damage,
-  });
+  
+  // Skip enemy updates during defeat cinematic to freeze boss position
+  if (!state.defeatCinematic) {
+    updateEnemies({
+      enemies,
+      dt,
+      world,
+      player,
+      platformBounds,
+      findPlatformAt: worldController.findPlatformAt.bind(worldController),
+      findPlatformById: worldController.findPlatformById.bind(worldController),
+      trailSegments,
+      slimeGlobs,
+      enemyProjectiles,
+      spawnSlimeChunks,
+      spawnCoins,
+      playEnemyDeathSound,
+      hurtPlayer,
+      playerDamagePerTick,
+      spawnDamageNumber,
+      ACID_DEBUFF_DURATION,
+      ACID_TICK_INTERVAL,
+      PROJECTILE_INTERVAL,
+      PROJECTILE_MODE_SWITCH,
+      PROJECTILE_SPEED,
+      spikedShoes: state.upgrades.spiked_shoes,
+      onBossDefeated: handleBossDefeat,
+      onBossShieldActivated: handleBossShieldActivated,
+      debug999Damage: state.debug999Damage,
+    });
+  }
   if (!state.bossFightActive) {
     checkTraps();
   }
@@ -346,12 +350,20 @@ function toggle999Damage() {
 
 function updateCamera() {
   const maxCameraX = Math.max(0, world.width - canvas.width);
+  const maxCameraY = Math.max(0, world.height - canvas.height);
+  
   if (state.cinematicCameraX != null) {
     camera.x = clamp(state.cinematicCameraX, 0, maxCameraX);
-    return;
+  } else {
+    const desired = player.x - viewRightMargin;
+    camera.x = clamp(desired, 0, maxCameraX);
   }
-  const desired = player.x - viewRightMargin;
-  camera.x = clamp(desired, 0, maxCameraX);
+  
+  if (state.cinematicCameraY != null) {
+    camera.y = clamp(state.cinematicCameraY, 0, maxCameraY);
+  } else {
+    camera.y = 0; // Default to top of world
+  }
 }
 
 function updatePlatformDebugInfo() {
@@ -1149,7 +1161,6 @@ function updateDefeatCinematic(dt) {
     case 'pause': {
       if (def.timer >= def.pauseDuration) {
         console.log('⏸️  PAUSE COMPLETE → PAN PHASE');
-        console.log(`📍 Boss position: x=${boss?.x ?? 'N/A'}, y=${boss?.y ?? 'N/A'}, w=${boss?.w ?? 'N/A'}`);
         def.phase = 'pan';
         def.timer = 0;
       }
@@ -1157,29 +1168,43 @@ function updateDefeatCinematic(dt) {
     }
     
     case 'pan': {
-      if (!boss) break; // Safety check
-      
       const progress = Math.min(1, def.timer / def.panDuration);
-      const currentZoom = lerp(1, 1.3, progress);
-      const zoomedCanvasWidth = canvas.width / currentZoom;
       
-      // Calculate where the boss center should be on screen
-      const bossCenter = boss.x + boss.w / 2;
+      const screenCenterX = canvas.width / 2;
+      const screenCenterY = canvas.height / 2;
       
-      // Target: center the boss horizontally on screen
-      const idealCameraX = bossCenter - zoomedCanvasWidth / 2;
-      const maxCameraX = Math.max(0, world.width - zoomedCanvasWidth);
-      const targetCam = clamp(idealCameraX, 0, maxCameraX);
+      // Target: center the boss on screen (no zoom yet)
+      const targetCamX = def.bossCenterX - screenCenterX;
+      const targetCamY = def.bossCenterY - screenCenterY;
       
-      if (def.timer === 0) {
-        console.log(`🎬 PAN START - Boss center: ${bossCenter.toFixed(0)}, Canvas width (zoomed): ${zoomedCanvasWidth.toFixed(0)}, Target camera: ${targetCam.toFixed(0)}`);
-      }
+      const maxCameraX = Math.max(0, world.width - canvas.width);
+      const maxCameraY = Math.max(0, world.height - canvas.height);
       
-      state.cinematicCameraX = lerp(camera.x, targetCam, progress);
-      state.cameraZoomTarget = currentZoom;
+      const clampedTargetX = clamp(targetCamX, 0, maxCameraX);
+      const clampedTargetY = clamp(targetCamY, 0, maxCameraY);
+      
+      // Lerp from the CAPTURED starting position to the target
+      state.cinematicCameraX = lerp(def.startCameraX, clampedTargetX, progress);
+      state.cinematicCameraY = lerp(def.startCameraY, clampedTargetY, progress);
+      state.cameraZoomTarget = 1;  // No zoom during pan
       
       if (def.timer >= def.panDuration) {
-        console.log('🎬 PAN COMPLETE → MORPH PHASE');
+        console.log('🎬 PAN COMPLETE → ZOOM PHASE');
+        def.phase = 'zoom';
+        def.timer = 0;
+      }
+      break;
+    }
+    
+    case 'zoom': {
+      const progress = Math.min(1, def.timer / def.zoomDuration);
+      const currentZoom = lerp(1, 1.3, progress);
+      
+      // Keep camera at centered position, just zoom in
+      state.cameraZoomTarget = currentZoom;
+      
+      if (def.timer >= def.zoomDuration) {
+        console.log('🎬 ZOOM COMPLETE → MORPH PHASE');
         def.phase = 'morph';
         def.timer = 0;
         boss.defeatMorphMode = 'amoeba';
@@ -1286,11 +1311,9 @@ function updateDefeatCinematic(dt) {
         const itemsToSpawn = Math.floor(def.rainSpawnTimer * def.rainSpawnRate);
         if (itemsToSpawn > 0 && def.rainItemsSpawned < 40) {
           const canSpawn = Math.min(itemsToSpawn, 40 - def.rainItemsSpawned);
-          console.log(`🌧️  Spawning ${canSpawn} items. Before: ${def.rainItemsSpawned}, spawn rate: ${def.rainSpawnRate}/sec`);
           for (let i = 0; i < canSpawn; i++) {
             spawnSingleRainItem(def);
           }
-          console.log(`   After spawn: ${def.rainItemsSpawned}/40`);
           def.rainSpawnTimer -= itemsToSpawn / def.rainSpawnRate;
         }
       }
@@ -1298,7 +1321,6 @@ function updateDefeatCinematic(dt) {
       updateDefeatRain(def, dt);
       
       // Only exit rain phase when all 40 items have been collected
-      console.log(`🌧️  Rain Status: collected=${def.rainItemsCollected}, spawned=${def.rainItemsSpawned}`);
       if (def.rainItemsCollected >= 40 && def.rainItemsSpawned >= 40) {
         console.log(`🎉 RAIN COMPLETE → All items collected (${def.rainItemsCollected}/${def.rainItemsSpawned})`);
         finishDefeatCinematic();
@@ -1365,7 +1387,6 @@ function spawnSingleRainItem(def) {
       rainItem: true,
     });
     def.rainItemsSpawned++;
-    console.log(`✨ Spawned chunk at x=${Math.round(x)}, vy=${initialVy}`);
   } else {
     state.coins.push({
       x,
@@ -1378,7 +1399,6 @@ function spawnSingleRainItem(def) {
       rainItem: true,
     });
     def.rainItemsSpawned++;
-    console.log(`✨ Spawned coin at x=${Math.round(x)}, vy=${initialVy}`);
   }
 }
 
@@ -1465,7 +1485,6 @@ function updateDefeatRain(def, dt) {
   }
   
   if (initialChunks > 0 || initialCoins > 0 || def.explosionParticles.length > 0) {
-    console.log(`   Rain - Chunks: ${state.slimeChunks.length} (was ${initialChunks}), Coins: ${state.coins.length} (was ${initialCoins}), Particles: ${def.explosionParticles.length}`);
   }
 }
 
@@ -1505,12 +1524,24 @@ function handleBossDefeat() {
   console.log('🔴 BOSS DEFEAT TRIGGERED');
   audio.stopBossMusic?.();
   state.paused = true;
+  
+  // Reset player inputs to prevent unintended movement after cinematic
+  keys.clear();
+  
+  // Reset player movement state to allow falling to floor
+  player.vx = 0;
+  player.vy = 0;
+  
   const bossRef = state.boss;
+  const bossCenterX = (bossRef?.x ?? 0) + (bossRef?.w ?? 0) / 2;
+  const bossCenterY = (bossRef?.y ?? 0) + (bossRef?.h ?? 0) / 2;
+  console.log(`Captured boss center at defeat: (${bossCenterX}, ${bossCenterY})`);
   state.defeatCinematic = {
     phase: 'pause',
     timer: 0,
     pauseDuration: 0.4,
-    panDuration: 1.2,
+    panDuration: 1.0,    // Pan to boss position
+    zoomDuration: 0.8,   // Then zoom in
     morphDuration: 1.5,
     swellDuration: 1.0,
     explosionDuration: 0.3,
@@ -1524,7 +1555,11 @@ function handleBossDefeat() {
     bossRef: bossRef,
     bossStartX: bossRef?.x ?? 0,
     bossStartY: bossRef?.y ?? 0,
+    bossCenterX: bossCenterX,
+    bossCenterY: bossCenterY,
     playerStartX: player.x,
+    startCameraX: camera.x,  // Capture current camera position at defeat
+    startCameraY: camera.y,
   };
 }
 

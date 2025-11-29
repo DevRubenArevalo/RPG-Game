@@ -11,7 +11,7 @@ export class Renderer {
 
   draw() {
     const { state, ctx, canvas } = this;
-    const {
+    let {
       player,
       camera,
       world,
@@ -31,6 +31,12 @@ export class Renderer {
       boss,
       cameraZoom = 1,
     } = state;
+    
+    // Use cinematic camera if active (for defeat sequence)
+    if (state.cinematicCameraX != null) {
+      camera = { x: state.cinematicCameraX, y: state.cinematicCameraY };
+    }
+    
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawParallaxBackground();
     if (state.gameOver) {
@@ -38,7 +44,9 @@ export class Renderer {
       return;
     }
     ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(cameraZoom, cameraZoom);
+    ctx.translate(-canvas.width / 2, -canvas.height / 2);
     ctx.translate(-camera.x, 0);
     ctx.fillStyle = '#162344';
     const groundStart = camera.x - 200;
@@ -391,23 +399,7 @@ export class Renderer {
     });
     ctx.restore();
     
-    // Draw rain collection counter during rain phase and collection
-    if (defeatCinematic.phase === 'rain' || (defeatCinematic.rainItemsSpawned > 0 && defeatCinematic.rainItemsCollected < defeatCinematic.rainItemsSpawned)) {
-      ctx.save();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 36px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const counterText = `${defeatCinematic.rainItemsCollected} / ${defeatCinematic.rainItemsSpawned} Items Collected`;
-      ctx.fillText(counterText, canvas.width / 2, canvas.height * 0.15);
-      
-      // Show current phase for debugging
-      ctx.font = '14px Arial';
-      ctx.fillStyle = '#35d0ba';
-      ctx.fillText(`Phase: ${defeatCinematic.phase}`, canvas.width / 2, canvas.height * 0.22);
-      
-      ctx.restore();
-    }
+    // Rain collection counter hidden from player - tracked internally only
   }
 
   drawGameOverScene() {
