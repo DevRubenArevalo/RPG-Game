@@ -1,5 +1,7 @@
 # Slime Platformer
 
+# [Play here](https://devrubenarevalo.github.io/RPG-Game/)
+
 An arcade-y endless platformer about a teal slime that corrodes everything it touches. Slide, hop, and ooze across procedurally generated platforms, melt foes with your acid trail, and buy mutations between stretches to push the high-score marker even farther.
 
 ## How to Play
