@@ -83,5 +83,8 @@ export class GameState {
     this.pedestalTextVisible = false;  // Whether dialog is currently shown
     this.currentInteractable = null;  // Currently interacted object type (statue, pool, etc)
     this.dialogIndex = 0;  // Current index in multi-line dialog sequence
+    this.mutationCutscene = null;  // Mutation cutscene state
+    this.mutationCutsceneEnded = false;  // Flag to know when to transition back to normal rendering
+    this.mutationCutsceneParticles = [];  // Visual-only particles for mutation cutscene
   }
 }

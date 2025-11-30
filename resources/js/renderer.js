@@ -40,28 +40,41 @@ export class Renderer {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawParallaxBackground();
     
-    // Only render opening cutscene, skip main game rendering
-    if (state.openingCutscene) {
+    // Only render opening cutscene, skip main game rendering (unless mutation cutscene ended)
+    if (state.openingCutscene && !state.mutationCutsceneEnded) {
       if (!state.rendererDebugLogged) {
-        console.log('🎨 Renderer: Rendering cutscene only, hiding main game');
+        console.log('🎨 Renderer: Rendering tutorial room cutscene only');
         state.rendererDebugLogged = true;
       }
       
       ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.scale(cameraZoom, cameraZoom);
-      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      
+      // When mutation cutscene is active, zoom on player position (frozen at start)
+      if (state.mutationCutscene) {
+        const playerScreenX = state.mutationCutscene.zoomCenterScreenX;
+        const playerScreenY = state.mutationCutscene.zoomCenterScreenY;
+        
+        if (!state.rendererMutationDebug) {
+          console.log('🎨 [RENDERER] Mutation zoom transform - zoomCenter:', {x: playerScreenX.toFixed(1), y: playerScreenY.toFixed(1)}, 'zoom:', state.cameraZoom.toFixed(2), 'camera:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)});
+          state.rendererMutationDebug = true;
+        }
+        
+        ctx.translate(playerScreenX, playerScreenY);
+        ctx.scale(state.cameraZoom, state.cameraZoom);
+        ctx.translate(-playerScreenX, -playerScreenY);
+      } else {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(cameraZoom, cameraZoom);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      }
+      
       ctx.translate(-camera.x, 0);
       
       // Draw floor (same as main game)
       ctx.fillStyle = '#162344';
       ctx.fillRect(camera.x - 200, world.groundY, canvas.width + 400, canvas.height - world.groundY);
       
-      // Draw slime king statue
-      if (state.slimeKingStatue) {
-        this.drawSlimeKingStatue(state.slimeKingStatue);
-      }
-      
+      // Tutorial room only draws: poison pool, slime statue, and player
       // Draw poison pool and particles on top of floor
       if (state.poisonPool) {
         this.drawPoisonPool(state.poisonPool);
@@ -70,9 +83,41 @@ export class Renderer {
         this.drawPoisonParticles(state.poisonParticles);
       }
       
+      // Draw slime king statue
+      if (state.slimeKingStatue) {
+        this.drawSlimeKingStatue(state.slimeKingStatue);
+      }
+      
       // Draw regeneration particles (healing effect on player)
       if (state.regenerationParticles && state.regenerationParticles.length > 0) {
         this.drawRegenerationParticles(state.regenerationParticles);
+      }
+      
+      // Draw trail segments (acid trail from mutation)
+      if (trailSegments && trailSegments.length > 0) {
+        trailSegments.forEach((seg) => {
+          const alpha = seg.life / seg.maxLife;
+          ctx.fillStyle = `rgba(93, 255, 186, ${0.12 + 0.3 * alpha})`;
+          ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+          ctx.fillStyle = `rgba(53, 208, 186, ${0.35 * alpha})`;
+          ctx.fillRect(seg.x + 8, seg.y + 4, seg.w - 16, seg.h - 8);
+        });
+      }
+      
+      // Draw slime chunks (mutation particles)
+      if (slimeChunks && slimeChunks.length > 0) {
+        slimeChunks.forEach((chunk) => {
+          if (chunk.life <= 0) return;
+          const alpha = Math.max(0, chunk.life / chunk.maxLife);
+          ctx.fillStyle = `rgba(139, 200, 100, ${alpha * 0.8})`;
+          ctx.beginPath();
+          ctx.arc(chunk.x, chunk.y, chunk.size || 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.5})`;
+          ctx.beginPath();
+          ctx.arc(chunk.x, chunk.y, (chunk.size || 4) * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        });
       }
       
       // Draw player
@@ -150,6 +195,87 @@ export class Renderer {
       // Draw interact prompt if player is near statue
       // Prompt is hidden - dialog only shows when F is pressed
       
+      // Draw mutation cutscene effects if active (during opening cutscene) OR if particles still exist
+      if (state.mutationCutscene || (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0)) {
+        this.drawMutationCutsceneEffects(state.mutationCutscene, player, state);
+      }
+      
+      ctx.restore();
+      return;
+    }
+    
+    // After mutation ends, but still in tutorial - render full gameplay view during zoom-out
+    if (state.openingCutscene && state.mutationCutsceneEnded) {
+      ctx.save();
+      
+      // During zoom-out, keep zoom centered on the player using preserved zoom center
+      const playerScreenX = state.mutationZoomCenter ? state.mutationZoomCenter.x : (player.x + player.w / 2 - camera.x);
+      const playerScreenY = state.mutationZoomCenter ? state.mutationZoomCenter.y : (player.y + player.h / 2);
+      
+      ctx.translate(playerScreenX, playerScreenY);
+      ctx.scale(state.cameraZoom, state.cameraZoom);
+      ctx.translate(-playerScreenX, -playerScreenY);
+      ctx.translate(-camera.x, 0);
+      
+      // Draw floor
+      ctx.fillStyle = '#162344';
+      ctx.fillRect(camera.x - 200, world.groundY, canvas.width + 400, canvas.height - world.groundY);
+      
+      // Tutorial room only renders: poison pool, slime statue, and player
+      // Draw poison pool if it exists
+      if (state.poisonPool) {
+        this.drawPoisonPool(state.poisonPool);
+      }
+      if (state.poisonParticles && state.poisonParticles.length > 0) {
+        this.drawPoisonParticles(state.poisonParticles);
+      }
+      
+      // Draw slime king statue
+      if (state.slimeKingStatue) {
+        this.drawSlimeKingStatue(state.slimeKingStatue);
+      }
+      
+      // Draw trail segments
+      if (trailSegments && trailSegments.length > 0) {
+        trailSegments.forEach((seg) => {
+          const alpha = seg.life / seg.maxLife;
+          ctx.fillStyle = `rgba(93, 255, 186, ${0.12 + 0.3 * alpha})`;
+          ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+          ctx.fillStyle = `rgba(53, 208, 186, ${0.35 * alpha})`;
+          ctx.fillRect(seg.x + 8, seg.y + 4, seg.w - 16, seg.h - 8);
+        });
+      }
+      
+      // Draw player
+      const invuln = player.invulnTimer > 0;
+      if (invuln) ctx.globalAlpha = 0.5;
+      const baseX = player.x + player.w / 2;
+      const baseY = player.y + player.h - 10;
+      const squishX = 1;
+      const squishY = 1;
+      const eyeOffsetY = 8;
+      
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY, (player.w / 2) * squishX, (player.h / 2) * squishY, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3ba389';
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      if (invuln) ctx.globalAlpha = 1;
+      
+      // Draw mutation cutscene particles (still falling from explosion)
+      if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+        for (let particle of state.mutationCutsceneParticles) {
+          const alpha = Math.max(0, particle.life / particle.maxLife);
+          ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.8})`;
+          ctx.beginPath();
+          ctx.ellipse(particle.x, particle.y, particle.size / 2, particle.size / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
       
       ctx.restore();
       return;
@@ -368,6 +494,11 @@ export class Renderer {
     }
     if (state.poisonParticles && state.poisonParticles.length > 0) {
       this.drawPoisonParticles(state.poisonParticles);
+    }
+    
+    // Draw mutation cutscene effects if active
+    if (state.mutationCutscene) {
+      this.drawMutationCutsceneEffects(state.mutationCutscene, player, state);
     }
     
     damageNums.forEach((num) => {
@@ -1275,17 +1406,14 @@ export class Renderer {
       
       if (alpha <= 0) return;
       
-      // Twinkling effect that decreases as particle fades
-      const twinkleFactor = 0.5 + 0.5 * Math.sin(performance.now() * 0.01 + p.life * 10);
-      
-      // Green glow with twinkling effect
-      ctx.fillStyle = `rgba(93, 255, 186, ${alpha * twinkleFactor})`;
+      // Green glow without twinkling
+      ctx.fillStyle = `rgba(93, 255, 186, ${alpha})`;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
       
       // Outer glow
-      ctx.strokeStyle = `rgba(93, 255, 186, ${alpha * twinkleFactor * 0.5})`;
+      ctx.strokeStyle = `rgba(93, 255, 186, ${alpha * 0.5})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size + 2, 0, Math.PI * 2);
@@ -1812,6 +1940,78 @@ export class Renderer {
       ctx.fillText('Press F', promptX, promptY);
 
       ctx.restore();
+    }
+  }
+
+  drawMutationCutsceneEffects(cutscene, player, state) {
+    const { ctx } = this;
+    const baseX = player.x + player.w / 2;
+    const baseY = player.y + player.h - 10;
+
+    // Draw wavey/warped player during animation (active cutscene OR zoom-out phase)
+    const inZoomOut = !cutscene && state.mutationCutsceneEnded && state.mutationPlayerScale !== undefined;
+    if ((cutscene && (cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut) {
+      ctx.save();
+      
+      // Apply wave distortion effect
+      const waveIntensity = cutscene ? (cutscene.waveIntensity || 0) : 0;
+      const scale = cutscene ? (cutscene.playerScale || 1) : (state.mutationPlayerScale || 1);
+      
+      // Draw glowing aura around player
+      const auraAlpha = 0.4 + waveIntensity * 0.2;
+      ctx.fillStyle = `rgba(100, 255, 150, ${auraAlpha})`;
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY, (player.w / 2) * scale * 1.3, (player.h / 2) * scale * 1.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw warped player body
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      
+      // Create wavy ellipse using multiple curves
+      const segments = 32;
+      for (let i = 0; i <= segments; i++) {
+        const angle = (i / segments) * Math.PI * 2;
+        const waveOffset = Math.sin(angle * 3 + cutscene.elapsed * 8) * waveIntensity * 5;
+        const x = baseX + (player.w / 2) * scale * Math.cos(angle) * (1 + waveOffset / (player.w / 2));
+        const y = baseY + (player.h / 2) * scale * Math.sin(angle) * (1 + waveOffset / (player.h / 2));
+        
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.fill();
+      
+      // Draw eye
+      ctx.fillStyle = '#3ba389';
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY - 8 * scale, (player.w / 2.5) * scale, (player.h / 3) * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+
+    // Draw mutation cutscene particles (always draw if they exist, even after cutscene ends)
+    if (state && state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+      ctx.save();
+      for (let particle of state.mutationCutsceneParticles) {
+        const alpha = Math.max(0, particle.life / particle.maxLife);
+        ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.8})`;
+        ctx.beginPath();
+        ctx.ellipse(particle.x, particle.y, particle.size / 2, particle.size / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw intense light flash during explosion (only if cutscene is active)
+    if (cutscene && cutscene.zoomPhase === 'explosion') {
+      const progress = cutscene.elapsed / cutscene.duration;
+      if (progress > 0.8) {
+        const explosionPhase = (progress - 0.8) / 0.2;
+        const flashAlpha = (1 - explosionPhase) * 0.5;
+        ctx.fillStyle = `rgba(100, 255, 150, ${flashAlpha})`;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      }
     }
   }
 

@@ -3,14 +3,8 @@ import { UPGRADES } from './upgrades.js';
 const BASE_ABILITIES = [
   {
     id: 'acid_trail',
-    name: 'Acid Trail',
-    description: 'Leave a trail of corrosive slime as you move. Melt platforms and enemies.',
-    type: 'ability'
-  },
-  {
-    id: 'swallow_shield',
-    name: 'Swallow Shield',
-    description: 'Consume enemies to gain temporary protection and boost your size.',
+    title: 'Acid Trail',
+    desc: 'Leave a trail of corrosive slime as you move. Melts platforms and damages enemies.',
     type: 'ability'
   }
 ];
