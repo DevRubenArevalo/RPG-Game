@@ -3,14 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <title>From Nothing: A Slime's Journey</title>
-  <script type="module">
-    // Always fetch fresh version.js using timestamp (no cache)
-    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
-    const VERSION = versionModule.VERSION;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `./resources/css/custom.css?version=${VERSION}`;
-    document.head.appendChild(link);
+  <link rel="stylesheet" href="./resources/css/custom.css">
+  <script>
+    // Register Service Worker for cache busting
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then((registration) => {
+            console.log('✅ Service Worker registered:', registration.scope);
+            
+            // Check for updates every 60 seconds
+            setInterval(() => {
+              registration.update();
+            }, 60000);
+          })
+          .catch((error) => {
+            console.error('❌ Service Worker registration failed:', error);
+          });
+      });
+    }
   </script>
 </head>
 <body>
@@ -193,21 +204,16 @@
     </div>
   </div>
   <script type="module">
-    // Always fetch fresh version.js using timestamp (no cache)
-    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
-    const VERSION = versionModule.VERSION;
+    // Load version and display it
+    import { VERSION } from './resources/js/version.js';
     
     // Display version on home screen
     const versionEl = document.getElementById('gameVersion');
     if (versionEl) {
-      versionEl.textContent = `${VERSION}`;
+      versionEl.textContent = `FromNothing-v${VERSION}`;
     }
-    
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.src = `./resources/js/main.js?version=${VERSION}`;
-    document.body.appendChild(script);
   </script>
+  <script type="module" src="./resources/js/main.js"></script>
 
 </body>
 </html>
