@@ -2704,5 +2704,5 @@ function autoCloseDialogIfTooFar() {
   }
 }
 
-gameInstance = new Game(update, renderer);
+gameInstance = new Game(update, renderer, state);
 
