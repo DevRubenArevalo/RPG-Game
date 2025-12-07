@@ -3,7 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <title>From Nothing: A Slime's Journey</title>
-  <link rel="stylesheet" href="./resources/css/custom.css">
+  <script type="module">
+    // Always fetch fresh version.js using timestamp (no cache)
+    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
+    const VERSION = versionModule.VERSION;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `./resources/css/custom.css?version=${VERSION}`;
+    document.head.appendChild(link);
+  </script>
 </head>
 <body>
   <div class="game-wrap">
@@ -183,7 +191,15 @@
       <button id="levelCompleteReplay" type="button">Play Again</button>
     </div>
   </div>
-  <script type="module" src="./resources/js/main.js"></script>
+  <script type="module">
+    // Always fetch fresh version.js using timestamp (no cache)
+    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
+    const VERSION = versionModule.VERSION;
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = `./resources/js/main.js?version=${VERSION}`;
+    document.body.appendChild(script);
+  </script>
 
 </body>
 </html>
