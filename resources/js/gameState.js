@@ -73,5 +73,20 @@ export class GameState {
     this.debugShowBossStats = false;
     this.debug999Damage = false;
     this.deathMessage = null;
+    this.openingCutscene = null;  // Opening cutscene state
+    this.poisonPool = null;  // Poison pool object
+    this.poisonParticles = [];  // Poison cloud particles
+    this.regenerationParticles = [];  // Player regeneration effect particles
+    this.slimeKingStatue = null;  // Regal slime king statue in cutscene
+    this.openingComplete = false;  // Flag for opening cutscene completion
+    this.pedestalTextDialog = null;  // Dialog bubble for pedestal text
+    this.pedestalTextVisible = false;  // Whether dialog is currently shown
+    this.currentInteractable = null;  // Currently interacted object type (statue, pool, etc)
+    this.dialogIndex = 0;  // Current index in multi-line dialog sequence
+    this.mutationCutscene = null;  // Mutation cutscene state
+    this.mutationCutsceneEnded = false;  // Flag to know when to transition back to normal rendering
+    this.mutationCutsceneParticles = [];  // Visual-only particles for mutation cutscene
+    this.debugPaused = false;  // Debug pause - freezes all animations and game loop (press P)
+    this.preMutationTransition = null;  // Pre-mutation transition state (duck to idle)
   }
 }

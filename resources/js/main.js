@@ -14,6 +14,7 @@ import { GameOverManager } from './gameOverManager.js';
 import { UIManager } from './uiManager.js';
 import { Renderer } from './renderer.js';
 import { Game } from './gameLoop.js';
+import { RoomController } from './roomController.js';
 
 const muteToggle = document.getElementById('muteToggle');
 const shopRefreshButton = document.getElementById('shopRefresh');
@@ -26,6 +27,8 @@ state.purchasedUpgrades = new Set();
 UPGRADES.forEach((upgrade) => {
   state.upgrades[upgrade.id] = false;
 });
+// Initialize mutation-only abilities
+state.upgrades.acid_trail = false;
 state.magnetRange = 0;
 state.godMode = false;
 state.currentShopOptions = [];
@@ -36,6 +39,8 @@ state.gameOverNextTearSide = 'left';
 const audio = new AudioManager(AUDIO_TRACKS, muteToggle);
 let gameInstance;
 const shopManager = new ShopManager();
+const roomController = new RoomController();
+state.audio = audio;
 
 const {
   canvas,
@@ -104,6 +109,16 @@ const worldController = new WorldController({
   playCorrosionSound,
 });
 const BOSS_TRIGGER_DISTANCE = 20000;
+
+function getSlimeFlingCooldown() {
+  return state.slimeFlingCooldown;
+}
+
+function setSlimeFlingCooldown(value) {
+  state.slimeFlingCooldown = value;
+  state.slimeFlingCooldownMax = value;
+}
+
 function lerp(a, b, t) {
   const clamped = Math.min(Math.max(t, 0), 1);
   return a + (b - a) * clamped;
@@ -114,11 +129,55 @@ function update(dt) {
     statusEl.textContent = 'Home - click Start to run';
     return;
   }
+  
+  // Use room controller to handle room-specific updates
+  if (roomController.isTutorial()) {
+    statusEl.textContent = 'Opening Cutscene - Explore the poison pool (Press ENTER to continue)';
+    roomController.updateRoom(dt, state, world, canvas, {
+      player,
+      platforms,
+      enemies,
+      trailSegments,
+      slimeGlobs,
+      slimeChunks,
+      coins,
+      enemyProjectiles,
+      damageNumbers,
+      updatePlayerMovement,
+      updateTrail,
+      updateGlobs,
+      updateChunks,
+      updateCoins,
+      updateEnemyProjectiles,
+      updateEnemies,
+      updatePoisonParticles,
+      startPoisonEmission,
+      checkPlayerInPoisonPool,
+      autoCloseDialogIfTooFar,
+      updateCutsceneCamera,
+      updateOpeningCutscene,
+      playJumpSound,
+      spawnSlimeGlob,
+      getSlimeFlingCooldown: getSlimeFlingCooldown,
+      setSlimeFlingCooldown: setSlimeFlingCooldown,
+      mutateSlime,
+      playerManager,
+      worldController,
+    });
+    return;
+  }
+  
   if (state.gameOver) {
     gameOverState.animTime += dt;
     gameOverManager.updateTears(dt);
     statusEl.textContent = 'Game Over - press Y to continue';
     return;
+  }
+  
+  // Log first frame to confirm update is being called
+  if (!state.cutsceneDebugLogged) {
+    console.log('ℹ️ First update frame after cutscene check - state.openingCutscene:', state.openingCutscene);
+    state.cutsceneDebugLogged = true;
   }
   
   // Always update cinematic even if paused (for defeat cinematic)
@@ -140,6 +199,41 @@ function update(dt) {
     state.slimeFlingCooldownMax = 0;
   }
   player.invulnTimer = Math.max(0, player.invulnTimer - dt);
+  player.mutationTimer = Math.max(0, player.mutationTimer - dt);
+  
+  // Update mutation cutscene if active
+  if (state.mutationCutscene) {
+    updateMutationCutscene(dt);
+    // Update camera zoom smoothly
+    const zoomDiff = state.cameraZoomTarget - state.cameraZoom;
+    state.cameraZoom += zoomDiff * (1 - Math.pow(0.95, dt * 60)); // Smooth lerp
+    
+    if (!state.mutationDebugLogged2) {
+      console.log('🔍 [MAIN LOOP] Mutation active during main game, zoom:', state.cameraZoom.toFixed(2));
+      state.mutationDebugLogged2 = true;
+    }
+    
+    // Only update chunks and camera during cutscene, skip other updates
+    updateCamera();
+    updateChunks(dt);
+    
+    // Update mutation cutscene particles
+    if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+      for (let i = state.mutationCutsceneParticles.length - 1; i >= 0; i--) {
+        const p = state.mutationCutsceneParticles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 400 * dt; // Gravity
+        p.life -= dt;
+        if (p.life <= 0) {
+          state.mutationCutsceneParticles.splice(i, 1);
+        }
+      }
+    }
+    
+    return;
+  }
+  
   const best = highScores.length ? Math.floor(highScores[0]) : 0;
   statusEl.textContent = `HP ${player.health}/${player.maxHealth} | Dist ${Math.floor(player.farthest)} | Coins ${Math.floor(player.coins)} | Top ${best}`;
   const input = {
@@ -151,7 +245,7 @@ function update(dt) {
   };
   const allowMovement = !state.shopActive && !state.levelComplete;
   updatePlayerMovement(player, dt, input, world, {
-    swallowShield,
+    mutateSlime,
     applyPlayerScale: () => playerManager.applyScale(),
     spawnSlimeGlob,
     playJumpSound,
@@ -210,6 +304,9 @@ function update(dt) {
       debug999Damage: state.debug999Damage,
     });
   }
+  
+  // Check poison pool healing
+  checkPlayerInPoisonPool(dt);
   if (!state.bossFightActive) {
     checkTraps();
   }
@@ -353,10 +450,30 @@ function updateCamera() {
   const maxCameraY = Math.max(0, world.height - canvas.height);
   
   if (state.cinematicCameraX != null) {
+    const oldX = camera.x;
     camera.x = clamp(state.cinematicCameraX, 0, maxCameraX);
+    if (oldX !== camera.x) {
+      console.log('🎥 [CINEMATIC] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1));
+    }
   } else {
-    const desired = player.x - viewRightMargin;
-    camera.x = clamp(desired, 0, maxCameraX);
+    // During cutscene mutation, camera stays locked at 0 (entire scene fits in viewport)
+    // Only move camera in normal gameplay
+    if (state.mutationCutscene || state.mutationCutsceneEnded) {
+      if (!state.cameraLockedDuringMutation) {
+        console.log('🎥 [MUTATION] Camera locked at 0 (cutscene scene fits in viewport)');
+        state.cameraLockedDuringMutation = true;
+      }
+      camera.x = 0; // Keep camera locked during cutscene mutation
+    } else {
+      // Normal gameplay camera following
+      const desired = player.x - viewRightMargin;
+      const oldX = camera.x;
+      camera.x = clamp(desired, 0, maxCameraX);
+      
+      if (oldX !== camera.x) {
+        console.log('🎥 [GAMEPLAY] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1), '| Player.x:', player.x.toFixed(1));
+      }
+    }
   }
   
   if (state.cinematicCameraY != null) {
@@ -555,7 +672,7 @@ for (let i = 0; i < count; i++) {
 function updateTrail(dt) {
   let corrosionActive = false;
   trailTimer -= dt;
-  if (trailTimer <= 0) {
+  if (trailTimer <= 0 && state.upgrades.acid_trail) {
     spawnTrailSegment();
     trailTimer = TRAIL_INTERVAL;
   }
@@ -955,22 +1072,18 @@ function updateDamageNumbers(dt) {
 
 function hurtPlayer(amount, sourceX, source) {
   if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
-  if (player.shieldActive) {
-    player.shieldActive = false;
-  } else {
   player.health -= amount;
   spawnDamageNumber(player.x + player.w / 2, player.y, amount, 'player');
-}
-playHitSound();
-player.invulnTimer = 1;
-const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
-player.vx = dir * player.maxSpeed * 0.5;
-player.vy = -player.jumpSpeed * 0.6;
-player.grounded = false;
-player.squish = Math.min(0.35, player.squish + 0.22);
-player.x += dir * player.w * 0.5;
-clampPlayerHorizontal();
-playerManager.applyScale();
+  playHitSound();
+  player.invulnTimer = 1;
+  const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
+  player.vx = dir * player.maxSpeed * 0.5;
+  player.vy = -player.jumpSpeed * 0.6;
+  player.grounded = false;
+  player.squish = Math.min(0.35, player.squish + 0.22);
+  player.x += dir * player.w * 0.5;
+  clampPlayerHorizontal();
+  playerManager.applyScale();
 if (player.health <= 0) {
   player.health = 0;
   player.alive = false;
@@ -1628,11 +1741,205 @@ function playerDamagePerTick() {
   if (player.health >= 10) return 2;
   return 1;
 }
+function updatePreMutationTransition(dt) {
+  if (!state.preMutationTransition) return;
+  
+  const transition = state.preMutationTransition;
+  transition.elapsed += dt;
+  
+  console.log('🔄 Pre-mutation transition progress:', (transition.elapsed / transition.duration * 100).toFixed(1) + '%', 'duckTransition:', player.duckTransition.toFixed(3));
+  
+  // Wait for duck transition to complete (or timeout)
+  if (player.duckTransition <= 0.01 || transition.elapsed >= transition.duration) {
+    console.log('✅ Pre-mutation transition complete, starting mutation cutscene');
+    state.preMutationTransition = null;
+    player.duckTransition = 0;
+    player.ducking = false;
+    startMutationCutscene();
+  }
+}
 
-function swallowShield() {
-  if (player.health < 11 || player.shieldActive) return;
-  player.health -= 10;
-  player.shieldActive = true;
+function updateMutationCutscene(dt) {
+  if (!state.mutationCutscene) return;
+  
+  const cutscene = state.mutationCutscene;
+  cutscene.elapsed += dt;
+  const progress = Math.min(cutscene.elapsed / cutscene.duration, 1);
+  
+  // Phase 1: Zoom in (0 - 0.4)
+  if (progress < 0.4) {
+    const zoomPhase = progress / 0.4;
+    cutscene.zoom = 1 + zoomPhase * 1.5; // Zoom from 1 to 2.5
+    cutscene.zoomPhase = 'in';
+    if (!cutscene.phaseDebugIn) {
+      console.log('🎬 MUTATION PHASE: IN - Zoom starting');
+      cutscene.phaseDebugIn = true;
+    }
+  }
+  // Phase 2: Wavey animation (0.4 - 0.8)
+  else if (progress < 0.8) {
+    const waveyPhase = (progress - 0.4) / 0.4;
+    cutscene.zoom = 2.5; // Hold at max zoom
+    cutscene.waveIntensity = Math.sin(waveyPhase * Math.PI * 4) * 0.5; // Oscillate
+    if (!cutscene.phaseDebugWavey) {
+      console.log('🎬 MUTATION PHASE: WAVEY - Max zoom hold');
+      cutscene.phaseDebugWavey = true;
+    }
+    
+    // Grow and shrink the player
+    const scale = 1 + Math.sin(waveyPhase * Math.PI * 3) * 0.3;
+    cutscene.playerScale = scale;
+    
+    // Spawn visual drip particles (non-collectable)
+    if (waveyPhase < 0.5) {
+      cutscene.dripSpawnRate = waveyPhase * 20; // Increasing spawn rate
+    } else {
+      cutscene.dripSpawnRate = (1 - waveyPhase) * 20; // Decreasing spawn rate
+    }
+    
+    // Spawn drip particles randomly (visual only, not added to slimeChunks)
+    if (!state.mutationCutsceneParticles) {
+      state.mutationCutsceneParticles = [];
+    }
+    for (let i = 0; i < cutscene.dripSpawnRate * dt; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 100 + Math.random() * 150;
+      const size = 3 + Math.random() * 5;
+      state.mutationCutsceneParticles.push({
+        x: player.x + player.w / 2 + Math.cos(angle) * 30,
+        y: player.y + player.h / 2 + Math.sin(angle) * 30,
+        w: size,
+        h: size,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 2,
+        maxLife: 2,
+        size: size,
+      });
+    }
+    
+    cutscene.zoomPhase = 'wavey';
+  }
+  // Phase 3: Explosion (0.8 - 1.0)
+  else {
+    const explosionPhase = (progress - 0.8) / 0.2;
+    cutscene.zoom = 2.5 + explosionPhase * 0.5; // Slight additional zoom
+    if (!cutscene.phaseDebugExplosion) {
+      console.log('🎬 MUTATION PHASE: EXPLOSION START');
+      cutscene.phaseDebugExplosion = true;
+    }
+    
+    // Massive slime explosion (visual only, not added to slimeChunks)
+    if (!state.mutationCutsceneParticles) {
+      state.mutationCutsceneParticles = [];
+    }
+    const particleCount = Math.floor(explosionPhase * 30);
+    for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 200 + Math.random() * 300;
+      const distance = 40 + Math.random() * 80;
+      const size = 5 + Math.random() * 10;
+      
+      state.mutationCutsceneParticles.push({
+        x: player.x + player.w / 2 + Math.cos(angle) * distance,
+        y: player.y + player.h / 2 + Math.sin(angle) * distance,
+        w: size,
+        h: size,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 100, // Add upward bias
+        life: 1.5 + Math.random() * 1,
+        maxLife: 1.5 + Math.random() * 1,
+        size: size,
+      });
+    }
+    
+    cutscene.zoomPhase = 'explosion';
+  }
+  
+  // End cutscene
+  if (progress >= 1) {
+    console.log('🎬 MUTATION CUTSCENE COMPLETE - Resuming gameplay');
+    // Preserve zoom center for zoom-out phase
+    state.mutationZoomCenter = {
+      x: state.mutationCutscene.zoomCenterScreenX,
+      y: state.mutationCutscene.zoomCenterScreenY
+    };
+    // Store player scale for smooth transition
+    state.mutationPlayerScale = cutscene.playerScale || 1;
+    state.mutationCutscene = null;
+    state.mutationCutsceneEnded = true;
+    // Camera will smoothly zoom out in next frame
+    state.cameraZoomTarget = 1;
+  }
+}
+
+function mutateSlime() {
+  // Check if already mutated to level 1 or higher
+  if (player.mutationLevel >= 1) {
+    console.log('❌ Cannot mutate: already at mutation level', player.mutationLevel);
+    return;
+  }
+  
+  // Check if player has at least 5 HP to mutate
+  if (player.health < 5) {
+    console.log('❌ Cannot mutate: health is', player.health, 'needs at least 5');
+    return;
+  }
+  
+  console.log('✨ MUTATION TRIGGERED!');
+  console.log('  Camera pos:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)});
+  console.log('  Player pos:', {x: player.x.toFixed(1), y: player.y.toFixed(1)});
+  console.log('  Player ducking:', player.ducking, 'duckTransition:', player.duckTransition);
+  
+  // If player is ducking, start pre-mutation transition to idle
+  if (player.duckTransition > 0) {
+    console.log('🔄 Starting pre-mutation transition: duck -> idle');
+    state.preMutationTransition = {
+      elapsed: 0,
+      duration: 0.25, // Match the duck transition duration
+      targetDuckTransition: 0,
+    };
+    // Set ducking to false so the animation transitions to idle
+    player.ducking = false;
+    return; // Wait for transition to complete before starting mutation
+  }
+  
+  // Start actual mutation cutscene
+  startMutationCutscene();
+}
+
+function startMutationCutscene() {
+  console.log('✨ Starting mutation cutscene animation');
+  
+  // Increase mutation level
+  player.mutationLevel += 1;
+  
+  // Grant acid trail ability upgrade
+  state.upgrades.acid_trail = true;
+  console.log('✨ Acid trail enabled:', state.upgrades.acid_trail);
+  
+  // Ensure player is not ducking
+  player.ducking = false;
+  player.duckTransition = 0;
+  
+  // Start mutation cutscene
+  state.mutationCutscene = {
+    elapsed: 0,
+    duration: 2.2, // Total cutscene duration
+    zoom: 1,
+    zoomPhase: 'in',
+    waveIntensity: 0,
+    playerScale: 1,
+    dripSpawnRate: 0,
+    // Store the initial zoom center position (at start of cutscene)
+    zoomCenterScreenX: player.x + player.w / 2 - camera.x,
+    zoomCenterScreenY: player.y + player.h / 2,
+  };
+  state.cameraZoomTarget = 2.5; // Will be managed by cutscene
+  
+  // Reduce health to 1
+  player.health = 1;
+  
   playerManager.applyScale();
 }
 
@@ -1708,16 +2015,21 @@ function resetGame(toHome = false) {
   resolvePlatformCollisions(player);
   playerManager.resetMovementState();
   player.farthest = 0;
-  worldController.seedWorld();
   if (toHome) {
     state.homeScreenActive = true;
     uiManager.setHomeScreenVisible(true);
     audio.stopLoop?.('music');
     audio.playHomeMusic?.();
+    worldController.seedWorld();
   } else {
+    console.log('🎮 Starting new game - NOT going to home screen');
     state.homeScreenActive = false;
     uiManager.setHomeScreenVisible(false);
-    audio.startMusic?.();
+    // Initialize tutorial room (opening cutscene)
+    console.log('📍 Initializing tutorial room');
+    roomController.initTutorialRoom(state, world, canvas);
+    initializeOpeningCutscene();
+    console.log('✅ Tutorial room initialized');
   }
 }
 
@@ -1735,4 +2047,764 @@ function triggerBossCinematicTeleport() {
   }
 }
 
-gameInstance = new Game(update, renderer);
+function initializeOpeningCutscene() {
+  console.log('🎬 INITIALIZING OPENING CUTSCENE - START');
+  console.log('  Player position:', { x: player.x, y: player.y });
+  console.log('  World groundY:', world.groundY);
+  
+  // Stop music during cutscene
+  audio.stopLoop?.('music');
+  
+  // Play slime creation sound
+  audio.playEffect?.('slimeCreation');
+  
+  // Start opening cutscene with player spawning from poison pool
+  const cutsceneObj = {
+    phase: 'spawn',  // 'spawn' -> 'explore'
+    timer: 0,
+    spawnDuration: 2.0,  // 2 seconds for player to rise from pool
+  };
+  
+  console.log('  Creating cutsceneObj:', cutsceneObj);
+  state.openingCutscene = cutsceneObj;
+  console.log('  After assignment - state.openingCutscene:', state.openingCutscene);
+  
+  // Position player on the floor for cutscene
+  player.y = world.groundY - player.h;
+  player.vy = 0;
+  player.vx = 0;
+  
+  // Create poison pool on the floor
+  state.poisonPool = {
+    x: player.x - 100,
+    y: world.groundY - 30,  // Sitting on top of the floor
+    w: 200,
+    h: 60,
+    isActive: true,
+    healTimer: 0,
+    healInterval: 2.0,
+  };
+  
+  console.log('🟢 Poison pool created:', state.poisonPool);
+  
+  // Lock camera to cutscene room (prevent scrolling right)
+  state.cutsceneRoomBounds = {
+    minX: 0,
+    maxX: 800,  // Limit exploration to first 800 pixels
+  };
+  
+  console.log('📺 Cutscene room bounds set:', state.cutsceneRoomBounds);
+  
+  // Create slime king statue in the middle-right of the screen
+  const statueX = canvas.width * 0.6;  // Slightly to the right
+  const statueY = world.groundY - 175;  // Pedestal bottom touches ground where player stands
+  
+  state.slimeKingStatue = {
+    x: statueX,
+    y: statueY,
+    w: 80,
+    h: 120,
+    baseColor: '#2d9d7a',  // Teal green for statue
+    crownColor: '#ffd25d',  // Gold for crown
+    glowIntensity: 0,
+    maxGlow: 1.0,
+  };
+  
+  console.log('👑 Slime King Statue created:', state.slimeKingStatue);
+  
+  // Start particle emission from pool
+  startPoisonEmission();
+  console.log('✨ Particle emission started, particles count:', state.poisonParticles.length);
+  console.log('🎬 INITIALIZING OPENING CUTSCENE - END, state.openingCutscene:', state.openingCutscene);
+}
+
+function createPoisonPool() {
+  return {
+    x: player.x - 100,
+    y: world.groundY - 40,
+    w: 200,
+    h: 60,
+    isActive: true,
+    healTimer: 0,
+    healInterval: 2.0,  // 1 HP every 2 seconds
+  };
+}
+
+function startPoisonEmission() {
+  // Emit poison cloud particles from the pool only if player is in it and needs healing
+  if (!state.poisonPool) return;
+  
+  // Only emit particles if player is standing in the pool and health is 5 or below
+  const poolX = state.poisonPool.x;
+  const poolY = state.poisonPool.y;
+  const poolW = state.poisonPool.w;
+  const poolH = state.poisonPool.h;
+  
+  // Check if player is standing in pool (feet collision)
+  const playerFeetY = player.y + player.h;
+  const playerCenterX = player.x + player.w / 2;
+  
+  const playerInPool = playerCenterX > poolX && playerCenterX < poolX + poolW &&
+                       playerFeetY > poolY && playerFeetY < poolY + poolH;
+  
+  // Don't emit if player is not in pool or health is above 5
+  if (!playerInPool || player.health > 5) return;
+  
+  const poolCenterX = poolX + poolW / 2;
+  const poolCenterY = poolY;
+  
+  // Emit 3-5 particles per frame
+  for (let i = 0; i < 4; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 30 + Math.random() * 50;
+    
+    state.poisonParticles.push({
+      x: poolCenterX + (Math.random() - 0.5) * 60,
+      y: poolCenterY + (Math.random() - 0.5) * 30,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 40,  // Bias upward
+      life: 1.0,
+      maxLife: 1.0,
+      size: 3 + Math.random() * 8,
+      color: 'rgba(100, 200, 100, ',  // Green poison color
+    });
+  }
+}
+
+function updatePoisonParticles(dt) {
+  state.poisonParticles = state.poisonParticles.filter(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 20 * dt;  // Gravity
+    p.life -= dt;
+    return p.life > 0;
+  });
+}
+
+function emitRegenerationParticles(player, dt) {
+  // Only emit if poison pool exists
+  if (!state.poisonPool) return;
+  
+  // Maximum particles at any one time
+  const maxParticles = 4
+  if (state.regenerationParticles.length >= maxParticles) return;
+  
+  // Emit green particles from the poison pool toward the player
+  // Check if player is ducking in poison pool for enhanced effect
+  const isDuckingInPool = player.ducking && 
+    (player.x + player.w / 2) > state.poisonPool.x && 
+    (player.x + player.w / 2) < state.poisonPool.x + state.poisonPool.w;
+  
+  // Ensure minimum 40 particles are always emitting
+  const minimumParticles = 2;
+  const particleCount = minimumParticles * dt;  // Spread 40 particles across 1 second of frames
+  
+  for (let i = 0; i < Math.ceil(particleCount); i++) {
+    // Spawn particles from random points within the poison pool circle
+    const poolCenterX = state.poisonPool.x + state.poisonPool.w / 2;
+    const poolCenterY = state.poisonPool.y + state.poisonPool.h / 2;
+    const basePoolRadius = state.poisonPool.w / 2;
+    
+    // Double the pool radius when ducking for particles to start farther away
+    const poolRadius = isDuckingInPool ? basePoolRadius * 2 : basePoolRadius;
+    
+    // Random point within circle using random radius and angle
+    const angle = Math.random() * Math.PI * 2;
+    const randomRadius = Math.sqrt(Math.random()) * poolRadius;  // sqrt for uniform distribution in circle
+    
+    const spawnX = poolCenterX + Math.cos(angle) * randomRadius;
+    const spawnY = poolCenterY + Math.sin(angle) * randomRadius;
+    
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    
+    // Initial velocity toward player (slower)
+    const speed = 50 + Math.random() * 30;  // 50-80 initial speed
+    const dirX = playerCenterX - spawnX;
+    const dirY = playerCenterY - spawnY;
+    const dirLength = Math.sqrt(dirX * dirX + dirY * dirY);
+    
+    // Increase acceleration by 400% when ducking in pool (450 * 5 = 2250)
+    const baseAcceleration = 450;
+    const acceleration = isDuckingInPool ? baseAcceleration * 5 : baseAcceleration;
+    
+    const particle = {
+      x: spawnX,
+      y: spawnY,
+      targetX: playerCenterX,
+      targetY: playerCenterY,
+      vx: (dirX / dirLength) * speed,
+      vy: (dirY / dirLength) * speed,
+      life: 1.0,  // 1 second lifetime
+      maxLife: 1.0,
+      size: 1.5 + Math.random() * 1,  // 1.5-2.5 pixel size
+      type: 'regeneration',
+      acceleration: acceleration,
+    };
+    
+    state.regenerationParticles.push(particle);
+  }
+}
+
+function updateRegenerationParticles(dt) {
+  state.regenerationParticles = state.regenerationParticles.filter(p => {
+    // Get direction to player
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+    
+    const dirX = playerCenterX - p.x;
+    const dirY = playerCenterY - p.y;
+    const distToPlayer = Math.sqrt(dirX * dirX + dirY * dirY);
+    
+    // Remove particle if it collides with player (distance < player radius doubled)
+    const playerRadius = player.w / 2 * 2;  // Double the collision radius
+    if (distToPlayer < playerRadius) {
+      return false;  // Remove particle
+    }
+    
+    // Apply acceleration toward player center
+    if (distToPlayer > 5) {
+      const normDirX = dirX / distToPlayer;
+      const normDirY = dirY / distToPlayer;
+      
+      // Apply acceleration (gravity-like pull toward center)
+      p.vx += normDirX * p.acceleration * dt;
+      p.vy += normDirY * p.acceleration * dt;
+    }
+    
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    return p.life > 0;
+  });
+}
+
+function updateOpeningCutscene(dt) {
+  if (!state.openingCutscene) {
+    console.warn('⚠️ updateOpeningCutscene called but state.openingCutscene is null');
+    return;
+  }
+  
+  // Handle pre-mutation transition if active (takes priority before mutation cutscene)
+  if (state.preMutationTransition) {
+    updatePreMutationTransition(dt);
+    return;
+  }
+  
+  // Handle mutation cutscene if active (takes priority over normal cutscene phases)
+  if (state.mutationCutscene) {
+    updateMutationCutscene(dt);
+    // Update camera zoom smoothly
+    const zoomDiff = state.cameraZoomTarget - state.cameraZoom;
+    state.cameraZoom += zoomDiff * (1 - Math.pow(0.95, dt * 60)); // Smooth lerp
+    
+    // Update camera to follow player during mutation
+    updateCamera();
+    
+    if (!state.mutationDebugLogged) {
+      console.log('🔍 [TUTORIAL] Mutation active, zoom target:', state.cameraZoomTarget, 'current zoom:', state.cameraZoom.toFixed(2), 'Camera:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)}, 'Player:', {x: player.x.toFixed(1), y: player.y.toFixed(1)});
+      state.mutationDebugLogged = true;
+    }
+    
+    // Update chunks during mutation cutscene
+    updateChunks(dt);
+    
+    // Update mutation cutscene particles
+    if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+      for (let i = state.mutationCutsceneParticles.length - 1; i >= 0; i--) {
+        const p = state.mutationCutsceneParticles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 400 * dt; // Gravity
+        p.life -= dt;
+        // Remove only after life has gone past 0 (allows full fade to alpha 0)
+        if (p.life < -0.1) {
+          state.mutationCutsceneParticles.splice(i, 1);
+        }
+      }
+    }
+    return; // Skip normal cutscene phases while mutation is active
+  }
+  
+  // Handle zoom-out after mutation ends
+  if (state.mutationCutsceneEnded) {
+    // After mutation ends, continue smooth zoom out and update camera
+    const zoomDiff = state.cameraZoomTarget - state.cameraZoom;
+    state.cameraZoom += zoomDiff * (1 - Math.pow(0.95, dt * 60)); // Smooth lerp
+    
+    // Smoothly transition player scale back to 1.0
+    if (state.mutationPlayerScale !== undefined && state.mutationPlayerScale !== 1) {
+      const scaleDiff = 1 - state.mutationPlayerScale;
+      state.mutationPlayerScale += scaleDiff * (1 - Math.pow(0.9, dt * 60)); // Smooth lerp to 1.0
+    }
+    
+    // Keep updating camera during zoom-out
+    updateCamera();
+    
+    // Log camera and player positions periodically during zoom-out
+    if (!state.mutationZoomOutLogged) {
+      console.log('🔍 ZOOM-OUT START - Camera:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)}, 'Player:', {x: player.x.toFixed(1), y: player.y.toFixed(1)});
+      state.mutationZoomOutLogged = true;
+    }
+    
+    // Update mutation cutscene particles still falling
+    if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+      for (let i = state.mutationCutsceneParticles.length - 1; i >= 0; i--) {
+        const p = state.mutationCutsceneParticles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 400 * dt; // Gravity
+        p.life -= dt;
+        // Remove only after life has gone past 0 (allows full fade to alpha 0)
+        if (p.life < -0.1) {
+          state.mutationCutsceneParticles.splice(i, 1);
+        }
+      }
+    }
+    
+    // If zoom is back to normal, clear the mutation ended flag and resume explore phase
+    if (Math.abs(state.cameraZoom - 1) < 0.01) {
+      console.log('✅ [TUTORIAL] Zoom complete! Resuming normal explore phase');
+      state.mutationCutsceneEnded = false;
+      state.mutationZoomCenter = null;
+      state.mutationPlayerScale = undefined;
+      state.mutationDebugLogged = false;
+      state.mutationZoomOutLogged = false;
+      state.cameraLockedDuringMutation = false;
+      state.mutationComplete = true; // Flag that mutation is done and player can proceed
+      console.log('✅ Setting mutationComplete = true - player can now move to right edge to transition');
+      // Fall through to normal cutscene phase handling below
+    } else {
+      // Still zooming out, skip normal cutscene phases
+      return;
+    }
+  }
+  
+  const cs = state.openingCutscene;
+  cs.timer += dt;
+  
+  switch (cs.phase) {
+    case 'spawn': {
+      const progress = Math.min(1, cs.timer / cs.spawnDuration);
+      
+      if (cs.timer < 0.1) {
+        console.log('🌊 SPAWN phase - Progress:', progress.toFixed(3), 'Timer:', cs.timer.toFixed(3), 'spawnDuration:', cs.spawnDuration);
+      }
+      
+      // Rise player up from poison pool
+      const poolY = state.poisonPool.y - player.h;  // Player standing on pool
+      const startY = world.groundY - player.h;  // Player on floor
+      player.y = startY + (poolY - startY) * progress;
+      
+      // Bobbing motion as rising
+      const bobAmount = Math.sin(progress * Math.PI * 4) * 15;
+      player.y += bobAmount;
+      
+      // Grow player from 0.1 scale to 1.0 scale during spawn
+      const scaleProgress = Math.min(1, progress * 1.5);  // Finish growing before spawn ends
+      player.squish = scaleProgress - 1;  // squish goes from -1 to 0, making scale go from 0 to 1
+      
+      // Store animation progress for health bar rendering
+      state.spawnAnimationProgress = progress;
+      
+      // Freeze player velocity during spawn
+      player.vy = 0;
+      player.vx = 0;
+      player.grounded = false;
+      
+      // Update particles (but don't emit during spawn - pool stays still)
+      updatePoisonParticles(dt);
+      
+      if (cs.timer >= cs.spawnDuration) {
+        console.log('✅ SPAWN phase complete, transitioning to EXPLORE');
+        cs.phase = 'explore';
+        cs.timer = 0;
+        player.y = poolY;
+        player.grounded = false;
+        player.squish = 0;  // Reset to normal size
+        state.spawnAnimationProgress = 1;  // Keep showing full health bar
+      }
+      break;
+    }
+    
+    case 'explore': {
+      // Player can now move around freely in the cutscene room
+      // Handle input and movement just like normal game
+      const input = {
+        left: keys.has('arrowleft') || keys.has('a'),
+        right: keys.has('arrowright') || keys.has('d'),
+        jump: keys.has(' ') || keys.has('arrowup') || keys.has('w'),
+        duck: keys.has('arrowdown') || keys.has('s'),
+        swallow: keys.has('f'),
+      };
+      
+      // Update player movement (without world generation or platform collisions)
+      updatePlayerMovement(player, dt, input, world, {
+        mutateSlime,
+        applyPlayerScale: () => playerManager.applyScale(),
+        spawnSlimeGlob,
+        playJumpSound,
+        ensureWorldAhead: () => {}, // Don't spawn world during cutscene
+        resolvePlatformCollisions: () => {
+          // Simple ground collision only - keep player on the floor
+          if (player.y + player.h > world.groundY) {
+            player.y = world.groundY - player.h;
+            player.vy = 0;
+            player.grounded = true;
+          }
+        },
+        getSlimeFlingCooldown: () => state.slimeFlingCooldown,
+        setSlimeFlingCooldown: (value) => {
+          state.slimeFlingCooldown = value;
+          state.slimeFlingCooldownMax = value;
+        },
+        allowMovement: true,
+        allowWallMode: state.upgrades.slime_wall,
+        allowFling: state.upgrades.slime_fling,
+      });
+      
+      // Constrain camera to cutscene room
+      updateCutsceneCamera();
+      
+      // Lock player within cutscene viewport
+      const viewportWidth = canvas.width;
+      const maxPlayerX = viewportWidth - player.w;
+      player.x = Math.max(0, Math.min(player.x, maxPlayerX));
+      
+      // Update trail effects if acid trail is active
+      updateTrail(dt);
+      
+      // Update particles and poison effects
+      updatePoisonParticles(dt);
+      startPoisonEmission();
+      checkPlayerInPoisonPool(dt);
+      
+      // Update mutation cutscene particles if any are still falling
+      if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+        for (let i = state.mutationCutsceneParticles.length - 1; i >= 0; i--) {
+          const p = state.mutationCutsceneParticles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vy += 400 * dt; // Gravity
+          p.life -= dt;
+          if (p.life < -0.1) {
+            state.mutationCutsceneParticles.splice(i, 1);
+          }
+        }
+      }
+      
+      // Auto-close dialog if player walks away from interactable
+      autoCloseDialogIfTooFar();
+      
+      // Check if mutation is complete and player touches right wall to proceed to main game
+      if (state.mutationComplete) {
+        const viewportWidth = canvas.width;
+        const rightEdgeThreshold = viewportWidth - 10;
+        const playerRightEdge = player.x + player.w;
+        const atRightEdge = playerRightEdge >= rightEdgeThreshold;
+        
+        if (!state.transitionCheckLogged) {
+          console.log('✅ Mutation complete - watching for player to reach right edge to transition');
+          state.transitionCheckLogged = true;
+        }
+        
+        if (atRightEdge) {
+          console.log('🚀 Player touched right wall - transitioning to main game');
+          exitCutsceneToMainGame();
+          return;
+        }
+      }
+      
+      break;
+    }
+  }
+}
+
+function updateCutsceneCamera() {
+  // Keep camera locked to cutscene room bounds - no scrolling
+  if (!state.cutsceneRoomBounds) return;
+  
+  // During mutation cutscene or zoom-out, allow camera to follow player (don't lock it)
+  if (state.mutationCutscene || state.mutationCutsceneEnded) {
+    if (!state.cutsceneCameraSkipLogged) {
+      console.log('🎥 [CUTSCENE CAMERA] Skipping lock - mutation active, letting updateCamera() handle it');
+      state.cutsceneCameraSkipLogged = true;
+    }
+    state.cutsceneCameraLockLogged = false; // Reset lock flag when skipping
+    return;
+  }
+  
+  // Lock camera at starting position (no movement)
+  if (!state.cutsceneCameraLockLogged) {
+    console.log('🎥 [CUTSCENE CAMERA] Locking camera to (0, 0)');
+    state.cutsceneCameraLockLogged = true;
+  }
+  state.cutsceneCameraSkipLogged = false; // Reset skip flag when locking
+  camera.x = 0;
+  camera.y = 0;
+}
+
+function exitCutsceneToMainGame() {
+  console.log('🚀 EXITING CUTSCENE TO MAIN GAME');
+  
+  // Use room controller to transition from tutorial to main game
+  roomController.transitionToMainRoom(state);
+  
+  // Seed the world now that we're entering the main game
+  worldController.seedWorld();
+  console.log('✅ World seeded, main game should start now');
+  
+  // Position player at left entrance (safe zone)
+  player.x = 100; // Start well into the safe zone
+  player.y = world.groundY - player.h;
+  player.vx = 0;
+  player.vy = 0;
+  
+  // Start entrance cutscene: zoom in on player, then zoom out
+  state.entranceCutscene = {
+    active: true,
+    phase: 'zoom-in', // 'zoom-in' -> 'pause' -> 'zoom-out' -> 'complete'
+    timer: 0,
+    zoomInDuration: 1.0,   // 1 second to zoom in
+    pauseDuration: 0.5,    // 0.5 second pause
+    zoomOutDuration: 2.0,  // 2 seconds to zoom out
+    startZoom: 1.0,
+    targetZoom: 2.5,
+  };
+  
+  // Set camera to follow player at entrance
+  camera.x = player.x + player.w / 2 - canvas.width / 2;
+  camera.y = player.y + player.h / 2 - canvas.height / 2;
+  
+  console.log('🎬 Starting entrance cutscene - player at entrance (x:', player.x, ')');
+}
+
+function checkPlayerInPoisonPool(dt) {
+  if (!state.poisonPool) return;
+  
+  const poolX = state.poisonPool.x;
+  const poolY = state.poisonPool.y;
+  const poolW = state.poisonPool.w;
+  const poolH = state.poisonPool.h;
+  
+  // Check if player is standing in pool (feet collision)
+  const playerFeetY = player.y + player.h;
+  const playerCenterX = player.x + player.w / 2;
+  
+  if (playerCenterX > poolX && playerCenterX < poolX + poolW &&
+      playerFeetY > poolY && playerFeetY < poolY + poolH) {
+    
+    // Only heal and show effects if player health is 5 HP or below
+    if (player.health <= 5) {
+      // Determine heal interval based on duck state (1s when ducking, 2s normally)
+      const healInterval = player.ducking ? 1.0 : 2.0;
+      
+      // Player is in poison pool - heal
+      state.poisonPool.healTimer += dt;
+      if (state.poisonPool.healTimer >= healInterval) {
+        player.health = Math.min(6, player.health + 1);
+        state.poisonPool.healTimer = 0;
+      }
+      
+      // Emit healing regeneration particles around player
+      emitRegenerationParticles(player, dt);
+      
+      // Emit poison cloud particles from pool
+      startPoisonEmission();
+    }
+  } else {
+    state.poisonPool.healTimer = 0;
+  }
+  
+  // Update all particle types
+  updatePoisonParticles(dt);
+  updateRegenerationParticles(dt);
+}
+
+// Add keyboard listener for cutscene progression and interactions
+window.addEventListener('keydown', (e) => {
+  if (state.openingCutscene) {
+    if (e.key === 'Enter') {
+      console.log('↩️  ENTER key pressed during cutscene, transitioning to main game');
+      e.preventDefault();
+      exitCutsceneToMainGame();
+    } else if (e.key === 'f' || e.key === 'F') {
+      console.log('🎮 F key pressed, checking for interactions');
+      e.preventDefault();
+      checkAndInteract();
+    }
+  }
+});
+
+function checkAndInteract() {
+  if (!state.openingCutscene || !state.player) return;
+  
+  const player = state.player;
+  const playerCenterX = player.x + player.w / 2;
+  const playerCenterY = player.y + player.h / 2;
+  
+  // Check statue interaction
+  if (state.slimeKingStatue) {
+    const statue = state.slimeKingStatue;
+    const statueCenterX = statue.x + statue.w / 2;
+    const statueCenterY = statue.y + statue.h / 2;
+    
+    const statueDistance = Math.sqrt(
+      Math.pow(playerCenterX - statueCenterX, 2) + 
+      Math.pow(playerCenterY - statueCenterY, 2)
+    );
+    
+    if (statueDistance < 150) {
+      toggleDialog('statue');
+      return;
+    }
+  }
+  
+  // Check poison pool interaction
+  if (state.poisonPool) {
+    const pool = state.poisonPool;
+    const poolCenterX = pool.x + pool.w / 2;
+    const poolCenterY = pool.y + pool.h / 2;
+    
+    const poolDistance = Math.sqrt(
+      Math.pow(playerCenterX - poolCenterX, 2) + 
+      Math.pow(playerCenterY - poolCenterY, 2)
+    );
+    
+    if (poolDistance < 120) {
+      toggleDialog('pool');
+      return;
+    }
+  }
+}
+
+function toggleDialog(objectType) {
+  // If dialog is open for a different object, close it first
+  if (state.pedestalTextVisible && state.currentInteractable !== objectType) {
+    state.pedestalTextVisible = false;
+    state.pedestalTextDialog = null;
+    state.currentInteractable = null;
+    state.dialogIndex = 0;
+  }
+  
+  // If dialog is open for the same object, advance to next line
+  if (state.pedestalTextVisible && state.currentInteractable === objectType) {
+    let dialogLines = [];
+    
+    if (objectType === 'statue') {
+      dialogLines = [
+        "Slime King the great!",
+        "Born of lowly slime in the lowly slime pools nearby.",
+        "It is said slimes can be soothed by slime pools.",
+        "Even some slime mutate when consuming enough slime."
+      ];
+    } else if (objectType === 'pool') {
+      dialogLines = [
+        "You see a poison marsh that birthed you..."
+      ];
+    }
+    
+    state.dialogIndex++;
+    
+    if (state.dialogIndex >= dialogLines.length) {
+      // End of dialog, close it
+      state.pedestalTextVisible = false;
+      state.pedestalTextDialog = null;
+      state.currentInteractable = null;
+      state.dialogIndex = 0;
+    } else {
+      // Show next line
+      showDialogLine(objectType, state.dialogIndex, dialogLines);
+    }
+  } else {
+    // Open dialog for the object - show first line
+    let dialogLines = [];
+    
+    if (objectType === 'statue') {
+      dialogLines = [
+        "Slime King the great!",
+        "Born of lowly slime in the lowly slime pools nearby.",
+        "It is said slimes can be soothed by slime pools.",
+        "Even some slime mutate when consuming enough slime."
+      ];
+    } else if (objectType === 'pool') {
+      dialogLines = [
+        "You see a poison marsh that birthed you..."
+      ];
+    }
+    
+    state.dialogIndex = 0;
+    showDialogLine(objectType, 0, dialogLines);
+    state.pedestalTextVisible = true;
+    state.currentInteractable = objectType;
+  }
+}
+
+function showDialogLine(objectType, lineIndex, dialogLines) {
+  if (lineIndex >= dialogLines.length) return;
+  
+  let dialogContent = {};
+  const text = dialogLines[lineIndex];
+  
+  if (objectType === 'statue') {
+    const statue = state.slimeKingStatue;
+    dialogContent = {
+      x: statue.x + statue.w / 2,
+      y: statue.y - 80,
+      text: text,
+      maxWidth: 200
+    };
+  } else if (objectType === 'pool') {
+    const pool = state.poisonPool;
+    dialogContent = {
+      x: pool.x + pool.w / 2,
+      y: pool.y - 40,
+      text: text,
+      maxWidth: 180
+    };
+  }
+  
+  state.pedestalTextDialog = dialogContent;
+}
+
+function autoCloseDialogIfTooFar() {
+  if (!state.pedestalTextVisible || !state.currentInteractable || !state.player) return;
+  
+  const player = state.player;
+  const playerCenterX = player.x + player.w / 2;
+  const playerCenterY = player.y + player.h / 2;
+  
+  let objectCenterX, objectCenterY, interactRange;
+  
+  // Get the center and range of the current interactable
+  if (state.currentInteractable === 'statue' && state.slimeKingStatue) {
+    const statue = state.slimeKingStatue;
+    objectCenterX = statue.x + statue.w / 2;
+    objectCenterY = statue.y + statue.h / 2;
+    interactRange = 150;
+  } else if (state.currentInteractable === 'pool' && state.poisonPool) {
+    const pool = state.poisonPool;
+    objectCenterX = pool.x + pool.w / 2;
+    objectCenterY = pool.y + pool.h / 2;
+    interactRange = 120;
+  } else {
+    return;
+  }
+  
+  // Calculate distance
+  const distance = Math.sqrt(
+    Math.pow(playerCenterX - objectCenterX, 2) + 
+    Math.pow(playerCenterY - objectCenterY, 2)
+  );
+  
+  // Close dialog if player is too far away
+  if (distance >= interactRange) {
+    state.pedestalTextVisible = false;
+    state.pedestalTextDialog = null;
+    state.currentInteractable = null;
+    state.dialogIndex = 0;
+  }
+}
+
+gameInstance = new Game(update, renderer, state);
+

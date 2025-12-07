@@ -4,13 +4,9 @@ const BASE_ABILITIES = [
   {
     id: 'acid_trail',
     title: 'Acid Trail',
-    desc: 'Moving leaves a damaging trail that stacks damage.',
-  },
-  {
-    id: 'swallow_shield',
-    title: 'Swallow Shield',
-    desc: 'Duck + F to spend 10 HP for a one-hit shield.',
-  },
+    desc: 'Leave a trail of corrosive slime as you move. Melts platforms and damages enemies.',
+    type: 'ability'
+  }
 ];
 
 const HOME_INFO = {
@@ -143,10 +139,9 @@ export class UIManager {
   handleStartClick() {
     this.updateHomeInfoContent('howto');
     if (!this.state.homeScreenActive) return;
-    this.state.homeScreenActive = false;
-    this.setHomeScreenVisible(false);
+    console.log('🎮 Home Start button clicked - calling onResetGame()');
     this.audio.stopHomeMusic?.();
-    this.audio.startMusic?.();
+    this.onResetGame();
   }
 
   updateHomeInfoContent(section = 'howto') {

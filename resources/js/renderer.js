@@ -39,6 +39,252 @@ export class Renderer {
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.drawParallaxBackground();
+    
+    // Only render opening cutscene, skip main game rendering (unless mutation cutscene ended)
+    if (state.openingCutscene && !state.mutationCutsceneEnded) {
+      if (!state.rendererDebugLogged) {
+        console.log('🎨 Renderer: Rendering tutorial room cutscene only');
+        state.rendererDebugLogged = true;
+      }
+      
+      ctx.save();
+      
+      // When mutation cutscene is active, zoom on player position (frozen at start)
+      if (state.mutationCutscene) {
+        const playerScreenX = state.mutationCutscene.zoomCenterScreenX;
+        const playerScreenY = state.mutationCutscene.zoomCenterScreenY;
+        
+        if (!state.rendererMutationDebug) {
+          console.log('🎨 [RENDERER] Mutation zoom transform - zoomCenter:', {x: playerScreenX.toFixed(1), y: playerScreenY.toFixed(1)}, 'zoom:', state.cameraZoom.toFixed(2), 'camera:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)});
+          state.rendererMutationDebug = true;
+        }
+        
+        ctx.translate(playerScreenX, playerScreenY);
+        ctx.scale(state.cameraZoom, state.cameraZoom);
+        ctx.translate(-playerScreenX, -playerScreenY);
+      } else {
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(cameraZoom, cameraZoom);
+        ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      }
+      
+      ctx.translate(-camera.x, 0);
+      
+      // Draw floor (same as main game)
+      ctx.fillStyle = '#162344';
+      ctx.fillRect(camera.x - 200, world.groundY, canvas.width + 400, canvas.height - world.groundY);
+      
+      // Tutorial room only draws: poison pool, slime statue, and player
+      // Draw poison pool and particles on top of floor
+      if (state.poisonPool) {
+        this.drawPoisonPool(state.poisonPool);
+      }
+      if (state.poisonParticles && state.poisonParticles.length > 0) {
+        this.drawPoisonParticles(state.poisonParticles);
+      }
+      
+      // Draw slime king statue
+      if (state.slimeKingStatue) {
+        this.drawSlimeKingStatue(state.slimeKingStatue);
+      }
+      
+      // Draw regeneration particles (healing effect on player)
+      if (state.regenerationParticles && state.regenerationParticles.length > 0) {
+        this.drawRegenerationParticles(state.regenerationParticles);
+      }
+      
+      // Draw trail segments (acid trail from mutation)
+      if (trailSegments && trailSegments.length > 0) {
+        trailSegments.forEach((seg) => {
+          const alpha = seg.life / seg.maxLife;
+          ctx.fillStyle = `rgba(93, 255, 186, ${0.12 + 0.3 * alpha})`;
+          ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+          ctx.fillStyle = `rgba(53, 208, 186, ${0.35 * alpha})`;
+          ctx.fillRect(seg.x + 8, seg.y + 4, seg.w - 16, seg.h - 8);
+        });
+      }
+      
+      // Draw slime chunks (mutation particles)
+      if (slimeChunks && slimeChunks.length > 0) {
+        slimeChunks.forEach((chunk) => {
+          if (chunk.life <= 0) return;
+          const alpha = Math.max(0, chunk.life / chunk.maxLife);
+          ctx.fillStyle = `rgba(139, 200, 100, ${alpha * 0.8})`;
+          ctx.beginPath();
+          ctx.arc(chunk.x, chunk.y, chunk.size || 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.5})`;
+          ctx.beginPath();
+          ctx.arc(chunk.x, chunk.y, (chunk.size || 4) * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      
+      // Calculate player position variables (needed for health bar even if player is hidden)
+      const idleBreathe = 1 + 0.02 * Math.sin(player.idleTimer * 2.5);
+      const idleSquish = 1 - 0.04 * Math.sin(player.idleTimer * 3.2 + Math.PI / 2);
+      const duckTransition = player.duckTransition || 0;
+      const duckSquish = 0.6 * duckTransition + 1 * (1 - duckTransition);
+      const squishX = (1 + player.squish * 0.5) * idleBreathe * (1 + duckTransition * 1);  // 2x wider when ducking
+      const squishY = Math.max(0.4, 1 - player.squish * 0.5) * idleSquish * duckSquish;
+      const baseX = player.x + player.w / 2;
+      const baseY = player.y + player.h - 10;
+      const eyeOffsetY = 8 - duckTransition * 6;  // Smoothly transition from 8 to 2
+      const visualBaseX = baseX;
+      
+      // Draw player (hide only during mutation cutscene zoom animation since it's drawn in drawMutationCutsceneEffects)
+      // Show during pre-mutation transition and normal gameplay to see animations
+      const showNormalPlayer = !state.mutationCutscene && !state.mutationCutsceneEnded;
+      if (showNormalPlayer) {
+        const invuln = player.invulnTimer > 0;
+        if (invuln) ctx.globalAlpha = 0.5;
+      
+        // Draw mutation pulse effect if active
+        if (player.mutationTimer > 0) {
+          const mutationPulse = 1 - (player.mutationTimer / 0.6); // 0 to 1 over 0.6 seconds
+          const pulseSize = 1 + mutationPulse * 0.5; // Expands outward
+          const pulseAlpha = (1 - mutationPulse) * 0.6; // Fades out
+          ctx.fillStyle = `rgba(100, 255, 150, ${pulseAlpha})`;
+          ctx.beginPath();
+          ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX * pulseSize, (player.h / 2) * squishY * pulseSize, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX, (player.h / 2) * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(visualBaseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (invuln) ctx.globalAlpha = 1;
+      }
+      
+      // Draw health bar with pop-in animation during spawn
+      if (state.spawnAnimationProgress !== undefined) {
+        ctx.save();
+        
+        // Pop-in scale animation (0.3 to 1.0)
+        const popProgress = Math.min(1, state.spawnAnimationProgress * 2);
+        const popScale = 0.3 + popProgress * 0.7;
+        
+        // Get health bar position
+        const healthBarY = baseY - player.h / 2 - 30;
+        
+        // Apply scale transformation centered on health bar
+        ctx.translate(baseX, healthBarY);
+        ctx.scale(popScale, popScale);
+        ctx.translate(-baseX, -healthBarY);
+        
+        // Draw normal health bar using standard function
+        this.drawHealthBar(baseX, healthBarY, player.health, player.maxHealth);
+        
+        ctx.restore();
+      }
+      
+      // Draw dialog bubble if pedestal text is visible
+      if (state.pedestalTextVisible && state.pedestalTextDialog) {
+        ctx.restore(); // Restore transform to draw dialog in screen space
+        this.drawDialogBubble(
+          state.pedestalTextDialog.x,
+          state.pedestalTextDialog.y,
+          state.pedestalTextDialog.text,
+          state.pedestalTextDialog.maxWidth
+        );
+        return;
+      }
+      
+      // Draw interact prompt if player is near statue
+      // Prompt is hidden - dialog only shows when F is pressed
+      
+      // Draw mutation cutscene effects if active (during opening cutscene) OR if particles still exist
+      if (state.mutationCutscene || (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0)) {
+        this.drawMutationCutsceneEffects(state.mutationCutscene, player, state);
+      }
+      
+      ctx.restore();
+      return;
+    }
+    
+    // After mutation ends, but still in tutorial - render full gameplay view during zoom-out
+    if (state.openingCutscene && state.mutationCutsceneEnded) {
+      ctx.save();
+      
+      // During zoom-out, keep zoom centered on the player using preserved zoom center
+      const playerScreenX = state.mutationZoomCenter ? state.mutationZoomCenter.x : (player.x + player.w / 2 - camera.x);
+      const playerScreenY = state.mutationZoomCenter ? state.mutationZoomCenter.y : (player.y + player.h / 2);
+      
+      ctx.translate(playerScreenX, playerScreenY);
+      ctx.scale(state.cameraZoom, state.cameraZoom);
+      ctx.translate(-playerScreenX, -playerScreenY);
+      ctx.translate(-camera.x, 0);
+      
+      // Draw floor
+      ctx.fillStyle = '#162344';
+      ctx.fillRect(camera.x - 200, world.groundY, canvas.width + 400, canvas.height - world.groundY);
+      
+      // Tutorial room only renders: poison pool, slime statue, and player
+      // Draw poison pool if it exists
+      if (state.poisonPool) {
+        this.drawPoisonPool(state.poisonPool);
+      }
+      if (state.poisonParticles && state.poisonParticles.length > 0) {
+        this.drawPoisonParticles(state.poisonParticles);
+      }
+      
+      // Draw slime king statue
+      if (state.slimeKingStatue) {
+        this.drawSlimeKingStatue(state.slimeKingStatue);
+      }
+      
+      // Draw trail segments
+      if (trailSegments && trailSegments.length > 0) {
+        trailSegments.forEach((seg) => {
+          const alpha = seg.life / seg.maxLife;
+          ctx.fillStyle = `rgba(93, 255, 186, ${0.12 + 0.3 * alpha})`;
+          ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+          ctx.fillStyle = `rgba(53, 208, 186, ${0.35 * alpha})`;
+          ctx.fillRect(seg.x + 8, seg.y + 4, seg.w - 16, seg.h - 8);
+        });
+      }
+      
+      // Draw player
+      const invuln = player.invulnTimer > 0;
+      if (invuln) ctx.globalAlpha = 0.5;
+      const baseX = player.x + player.w / 2;
+      const baseY = player.y + player.h - 10;
+      const squishX = 1;
+      const squishY = 1;
+      const eyeOffsetY = 8;
+      
+      ctx.fillStyle = player.color;
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY, (player.w / 2) * squishX, (player.h / 2) * squishY, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3ba389';
+      ctx.beginPath();
+      ctx.ellipse(baseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      if (invuln) ctx.globalAlpha = 1;
+      
+      // Draw mutation cutscene particles (still falling from explosion)
+      if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+        for (let particle of state.mutationCutsceneParticles) {
+          const alpha = Math.max(0, particle.life / particle.maxLife);
+          ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.8})`;
+          ctx.beginPath();
+          ctx.ellipse(particle.x, particle.y, particle.size / 2, particle.size / 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      
+      ctx.restore();
+      return;
+    }
+    
     if (state.gameOver) {
       this.drawGameOverScene();
       return;
@@ -207,15 +453,6 @@ export class Renderer {
       ctx.fill();
     }
     if (invuln) ctx.globalAlpha = 1;
-    if (player.shieldActive) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(80, 147, 255, 0.5)';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.ellipse(baseX, baseY - player.h / 4, (player.w / 2) * 1.25, (player.h / 2) * 1.25, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
     if (state.debugShowCollisions) {
       this.drawPlayerCollisionDebug(player);
       enemyProjectiles.forEach((proj) => this.drawProjectileCollisionDebug(proj));
@@ -254,6 +491,20 @@ export class Renderer {
     const playerBuffs = player.buffs || [{ label: 'T', color: '#ffd25d' }];
     this.drawBuffsNextToHealthBar(playerHealthBarData, playerBuffs);
     this.drawFlingCooldownIndicator();
+    
+    // Draw poison pool and particles
+    if (state.poisonPool) {
+      this.drawPoisonPool(state.poisonPool);
+    }
+    if (state.poisonParticles && state.poisonParticles.length > 0) {
+      this.drawPoisonParticles(state.poisonParticles);
+    }
+    
+    // Draw mutation cutscene effects if active
+    if (state.mutationCutscene) {
+      this.drawMutationCutsceneEffects(state.mutationCutscene, player, state);
+    }
+    
     damageNums.forEach((num) => {
       const alpha = Math.max(0, num.life / this.damageLifetime);
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
@@ -1102,5 +1353,687 @@ export class Renderer {
     }
   }
 
+  drawPoisonPool(pool) {
+    const { ctx } = this;
+    
+    // Draw pool water with gradient
+    const gradient = ctx.createLinearGradient(pool.x, pool.y, pool.x, pool.y + pool.h);
+    gradient.addColorStop(0, 'rgba(80, 180, 80, 0.6)');
+    gradient.addColorStop(1, 'rgba(40, 120, 40, 0.8)');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.ellipse(pool.x + pool.w / 2, pool.y + pool.h / 2, pool.w / 2, pool.h / 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Draw pool ripples (animated waves)
+    ctx.strokeStyle = 'rgba(100, 200, 100, 0.4)';
+    ctx.lineWidth = 2;
+    
+    const time = performance.now() * 0.001;  // Seconds
+    for (let i = 1; i <= 3; i++) {
+      const waveRadius = (i * 20 + time * 40) % 60;
+      const waveAlpha = Math.max(0, 1 - (waveRadius / 60));
+      ctx.strokeStyle = `rgba(100, 200, 100, ${waveAlpha * 0.4})`;
+      ctx.beginPath();
+      ctx.ellipse(pool.x + pool.w / 2, pool.y + pool.h / 2.2, waveRadius, waveRadius / 2.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Draw pool outline/shine
+    ctx.strokeStyle = 'rgba(150, 255, 150, 0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(pool.x + pool.w / 2, pool.y + pool.h / 2.5, pool.w / 2.2, pool.h / 2.8, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  drawPoisonParticles(particles) {
+    const { ctx } = this;
+    
+    particles.forEach((p) => {
+      const alpha = p.life / p.maxLife;
+      ctx.fillStyle = p.color + alpha + ')';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  drawRegenerationParticles(particles) {
+    const { ctx } = this;
+    
+    particles.forEach((p) => {
+      // Opacity starts at 1 and fades to 0 as particle approaches target
+      const progressTowardsTarget = 1 - (p.life / p.maxLife);  // 0 at start, 1 at end
+      const alpha = Math.max(0, 1 - progressTowardsTarget * 1.2);  // Fade as approaching
+      
+      if (alpha <= 0) return;
+      
+      // Green glow without twinkling
+      ctx.fillStyle = `rgba(93, 255, 186, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Outer glow
+      ctx.strokeStyle = `rgba(93, 255, 186, ${alpha * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size + 2, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  }
+
+  drawSlimeKingStatue(statue) {
+    const { ctx } = this;
+    
+    const cx = statue.x + statue.w / 2;
+    const cy = statue.y + statue.h / 2;
+    
+    // Background glow
+    ctx.beginPath();
+    ctx.arc(cx, cy - 20, 80, 0, Math.PI * 2);
+    const glow = ctx.createRadialGradient(cx, cy - 20, 15, cx, cy - 20, 100);
+    glow.addColorStop(0, "rgba(80, 255, 160, 0.25)");
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    ctx.fill();
+    
+    // Pedestal base - Roman column style
+    // Base platform
+    ctx.fillStyle = "#444";
+    ctx.beginPath();
+    ctx.moveTo(statue.x + 8, cy + 35);
+    ctx.lineTo(statue.x + statue.w - 8, cy + 35);
+    ctx.lineTo(statue.x + statue.w - 2, cy + statue.h - 5);
+    ctx.lineTo(statue.x + 2, cy + statue.h - 5);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Base shadow
+    ctx.fillStyle = "#333";
+    ctx.fillRect(statue.x + 8, cy + 33, statue.w - 16, 4);
+    
+    // Column shaft - main body with fluting details
+    ctx.fillStyle = "#555";
+    ctx.fillRect(statue.x + 12, cy + 20, statue.w - 24, 15);
+    
+    // Inscription panel on column - carved area with squiggly lines
+    const inscriptionX = statue.x + 13;
+    const inscriptionY = cy + 50;
+    const inscriptionW = statue.w - 26;
+    const inscriptionH = 21;
+    
+    // Draw inscription in front by saving and restoring context
+    ctx.save();
+    
+    // Inscription background (darker recessed area)
+    ctx.fillStyle = "#3a3a3a";
+    ctx.fillRect(inscriptionX, inscriptionY, inscriptionW, inscriptionH);
+    
+    // Inscription border (carved frame)
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(inscriptionX, inscriptionY, inscriptionW, inscriptionH);
+    
+    // Inscription highlight (top edge light)
+    ctx.strokeStyle = "#777";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(inscriptionX + 1, inscriptionY + 1);
+    ctx.lineTo(inscriptionX + inscriptionW - 1, inscriptionY + 1);
+    ctx.stroke();
+    
+    // Draw squiggly lines to look like ancient text
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Top squiggly line
+    ctx.beginPath();
+    ctx.moveTo(inscriptionX + 4, inscriptionY + 6);
+    for (let x = inscriptionX + 4; x < inscriptionX + inscriptionW - 4; x += 2) {
+      const y = inscriptionY + 6 + Math.sin(x * 0.3) * 1.5;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    // Middle squiggly line
+    ctx.beginPath();
+    ctx.moveTo(inscriptionX + 4, inscriptionY + 12);
+    for (let x = inscriptionX + 4; x < inscriptionX + inscriptionW - 4; x += 2) {
+      const y = inscriptionY + 12 + Math.cos(x * 0.25) * 1.5;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    // Bottom squiggly line
+    ctx.beginPath();
+    ctx.moveTo(inscriptionX + 4, inscriptionY + 18);
+    for (let x = inscriptionX + 4; x < inscriptionX + inscriptionW - 4; x += 2) {
+      const y = inscriptionY + 18 + Math.sin(x * 0.35 + 1) * 1.5;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    
+    ctx.restore();
+    
+    
+    
+    // Column fluting - vertical grooves for Roman style
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const fluteX = statue.x + 18 + (i * (statue.w - 36) / 4);
+      ctx.beginPath();
+      ctx.moveTo(fluteX, cy + 20);
+      ctx.lineTo(fluteX, cy + 35);
+      ctx.stroke();
+    }
+    
+    // Column highlight for roundness
+    ctx.strokeStyle = "#777";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(statue.x + 14, cy + 20);
+    ctx.lineTo(statue.x + 14, cy + 35);
+    ctx.stroke();
+    
+    // Capital (top of column) - wider ornate top
+    ctx.fillStyle = "#666";
+    ctx.beginPath();
+    ctx.moveTo(statue.x + 10, cy + 20);
+    ctx.lineTo(statue.x + statue.w - 10, cy + 20);
+    ctx.lineTo(statue.x + statue.w - 14, cy + 15);
+    ctx.lineTo(statue.x + 14, cy + 15);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Capital detail - egg and dart pattern
+    ctx.strokeStyle = "#888";
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < 4; i++) {
+      const decorX = statue.x + 20 + (i * (statue.w - 40) / 3);
+      ctx.beginPath();
+      ctx.arc(decorX, cy + 17.5, 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    // Base rim - decorative edge
+    ctx.fillStyle = "#777";
+    ctx.fillRect(statue.x + 10, cy + 35, statue.w - 20, 2);
+    
+    // Base shadow
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fillRect(statue.x + 10, cy + 37, statue.w - 20, 3);
+    
+    // Inscription on base platform
+    ctx.save();
+    ctx.font = 'italic 11px serif';
+    ctx.fillStyle = '#444';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SLIME KING', statue.x + statue.w / 2, cy + 46);
+    ctx.restore();
+    
+    // Drop shadow for slime
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 18, 45, 12, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fill();
+    
+    // Slime body - squishy blob with stone coloring
+    ctx.save();
+    ctx.translate(cx, cy - 5);
+    ctx.scale(1.3, 0.95);
+    ctx.beginPath();
+    ctx.arc(0, 0, 45, 0, Math.PI * 2);
+    
+    // Radial gradient for depth - stone grey-green
+    const bodyGrad = ctx.createRadialGradient(-15, -15, 5, 0, 0, 45);
+    bodyGrad.addColorStop(0, "#9a9a8e");
+    bodyGrad.addColorStop(0.4, "#6d7369");
+    bodyGrad.addColorStop(1, "#4a5147");
+    
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.restore();
+    
+    // Top highlight on slime - stone shine
+    ctx.beginPath();
+    ctx.ellipse(cx - 20, cy - 30, 13, 7, -0.3, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(200, 200, 200, 0.3)";
+    ctx.fill();
+    
+    // Eyes - closer together, no mouth - stone colored
+    const eyeY = cy - 10;
+    const eyeOffset = 12;
+    const eyeRadius = 6;
+    const pupilRadius = 3;
+    
+    // Eye whites - light grey stone
+    ctx.fillStyle = "#c0c0b0";
+    ctx.beginPath();
+    ctx.arc(cx - eyeOffset, eyeY, eyeRadius, 0, Math.PI * 2);
+    ctx.arc(cx + eyeOffset, eyeY, eyeRadius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Calculate pupil positions following the player
+    let pupilOffsetX = 1;
+    let pupilOffsetY = 1;
+    
+    if (this.state && this.state.player) {
+      const player = this.state.player;
+      const playerCenterX = player.x + player.w / 2;
+      const playerCenterY = player.y + player.h / 2;
+      
+      // Calculate angle from statue to player for each eye
+      const leftEyeX = cx - eyeOffset;
+      const rightEyeX = cx + eyeOffset;
+      
+      // Left eye pupil direction
+      const angleLeft = Math.atan2(playerCenterY - eyeY, playerCenterX - leftEyeX);
+      pupilOffsetX = (pupilRadius - 0.5) * Math.cos(angleLeft);
+      pupilOffsetY = (pupilRadius - 0.5) * Math.sin(angleLeft);
+    }
+    
+    // Pupils - dark stone, following player
+    ctx.fillStyle = "#4a4a40";
+    ctx.beginPath();
+    ctx.arc(cx - eyeOffset + pupilOffsetX, eyeY + pupilOffsetY, pupilRadius, 0, Math.PI * 2);
+    ctx.arc(cx + eyeOffset + pupilOffsetX, eyeY + pupilOffsetY, pupilRadius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Eye highlights
+    ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+    ctx.beginPath();
+    ctx.arc(cx - eyeOffset + pupilOffsetX + 2, eyeY + pupilOffsetY - 1, 1.5, 0, Math.PI * 2);
+    ctx.arc(cx + eyeOffset + pupilOffsetX + 2, eyeY + pupilOffsetY - 1, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Crown
+    const crownBaseY = cy - 35;
+    const crownWidth = 85;
+    const crownHeight = 28;
+    
+    // Crown base - stone grey
+    ctx.fillStyle = "#7a7a70";
+    ctx.beginPath();
+    ctx.moveTo(cx - crownWidth / 2, crownBaseY);
+    ctx.lineTo(cx + crownWidth / 2, crownBaseY);
+    ctx.lineTo(cx + crownWidth / 2 - 8, crownBaseY - 8);
+    ctx.lineTo(cx - crownWidth / 2 + 8, crownBaseY - 8);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Crown spikes - stone grey
+    ctx.beginPath();
+    ctx.moveTo(cx - crownWidth / 2 + 8, crownBaseY - 8);
+    ctx.lineTo(cx - crownWidth / 2 + 22, crownBaseY - crownHeight);
+    ctx.lineTo(cx - crownWidth / 2 + 36, crownBaseY - 8);
+    
+    ctx.lineTo(cx - 8, crownBaseY - 8);
+    ctx.lineTo(cx, crownBaseY - crownHeight - 4);
+    ctx.lineTo(cx + 8, crownBaseY - 8);
+    
+    ctx.lineTo(cx + crownWidth / 2 - 36, crownBaseY - 8);
+    ctx.lineTo(cx + crownWidth / 2 - 22, crownBaseY - crownHeight + 3);
+    ctx.lineTo(cx + crownWidth / 2 - 8, crownBaseY - 8);
+    ctx.closePath();
+    ctx.fillStyle = "#6a6a60";
+    ctx.fill();
+    
+    // Crown inner shadow line
+    ctx.strokeStyle = "#5a5a50";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - crownWidth / 2 + 10, crownBaseY - 5);
+    ctx.lineTo(cx + crownWidth / 2 - 10, crownBaseY - 5);
+    ctx.stroke();
+    
+    // Center gem - diamond shape - grey stone
+    ctx.fillStyle = "#8a8a7a";
+    ctx.beginPath();
+    ctx.moveTo(cx, crownBaseY - 20);
+    ctx.lineTo(cx - 6, crownBaseY - 11);
+    ctx.lineTo(cx, crownBaseY - 2);
+    ctx.lineTo(cx + 6, crownBaseY - 11);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Gem highlight - stone shine
+    ctx.fillStyle = "rgba(200, 200, 200, 0.6)";
+    ctx.beginPath();
+    ctx.moveTo(cx - 1, crownBaseY - 16);
+    ctx.lineTo(cx - 4, crownBaseY - 11);
+    ctx.lineTo(cx - 1, crownBaseY - 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  drawScribblyText(x, y, text, size = 16) {
+    const { ctx } = this;
+    
+    // Draw scribbly/wavy text by drawing it multiple times with slight offsets
+    ctx.font = `bold ${size}px Arial`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    const offsetCount = 3;
+    ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+    
+    for (let i = 0; i < offsetCount; i++) {
+      const offsetX = (Math.random() - 0.5) * 2;
+      const offsetY = (Math.random() - 0.5) * 2;
+      ctx.fillText(text, x + offsetX, y + offsetY);
+    }
+    
+    ctx.fillStyle = '#666';
+    ctx.fillText(text, x, y);
+  }
+
+  drawDialogBubble(x, y, text, maxWidth = 150) {
+    const { ctx } = this;
+    
+    // Split text into lines
+    const lines = [];
+    const words = text.split(' ');
+    let currentLine = '';
+    
+    ctx.font = 'bold 14px Arial';
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    
+    // Calculate bubble dimensions
+    const padding = 15;
+    const lineHeight = 18;
+    const bubbleWidth = Math.max(...lines.map(line => ctx.measureText(line).width)) + padding * 2;
+    const bubbleHeight = lines.length * lineHeight + padding * 2;
+    const tailHeight = 15;
+    const tailWidth = 20;
+    const radius = 8;
+    
+    const bubbleX = x - bubbleWidth / 2;
+    const bubbleY = y - bubbleHeight - tailHeight;
+    
+    // Draw combined bubble + tail shape with shadow first
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.beginPath();
+    // Top-left corner
+    ctx.moveTo(bubbleX + radius + 2, bubbleY + 2);
+    // Top edge
+    ctx.lineTo(bubbleX + bubbleWidth - radius + 2, bubbleY + 2);
+    // Top-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth + 2, bubbleY + 2, bubbleX + bubbleWidth + 2, bubbleY + radius + 2);
+    // Right edge
+    ctx.lineTo(bubbleX + bubbleWidth + 2, bubbleY + bubbleHeight - radius + 2);
+    // Bottom-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth + 2, bubbleY + bubbleHeight + 2, bubbleX + bubbleWidth - radius + 2, bubbleY + bubbleHeight + 2);
+    // Bottom-right to tail
+    ctx.lineTo(x + tailWidth / 2 + 2, bubbleY + bubbleHeight + 2);
+    // Tail point
+    ctx.lineTo(x + 2, y + 2);
+    // Tail back up
+    ctx.lineTo(x - tailWidth / 2 + 2, bubbleY + bubbleHeight + 2);
+    // Bottom-left to corner
+    ctx.lineTo(bubbleX + radius + 2, bubbleY + bubbleHeight + 2);
+    // Bottom-left curve
+    ctx.quadraticCurveTo(bubbleX + 2, bubbleY + bubbleHeight + 2, bubbleX + 2, bubbleY + bubbleHeight - radius + 2);
+    // Left edge
+    ctx.lineTo(bubbleX + 2, bubbleY + radius + 2);
+    // Top-left curve
+    ctx.quadraticCurveTo(bubbleX + 2, bubbleY + 2, bubbleX + radius + 2, bubbleY + 2);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw main bubble + tail
+    ctx.fillStyle = '#f5f5f5';
+    ctx.beginPath();
+    // Top-left corner
+    ctx.moveTo(bubbleX + radius, bubbleY);
+    // Top edge
+    ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
+    // Top-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
+    // Right edge
+    ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
+    // Bottom-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
+    // Bottom-right to tail
+    ctx.lineTo(x + tailWidth / 2, bubbleY + bubbleHeight);
+    // Tail point
+    ctx.lineTo(x, y);
+    // Tail back up
+    ctx.lineTo(x - tailWidth / 2, bubbleY + bubbleHeight);
+    // Bottom-left to corner
+    ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
+    // Bottom-left curve
+    ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
+    // Left edge
+    ctx.lineTo(bubbleX, bubbleY + radius);
+    // Top-left curve
+    ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Draw border
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Top-left corner
+    ctx.moveTo(bubbleX + radius, bubbleY);
+    // Top edge
+    ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
+    // Top-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
+    // Right edge
+    ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
+    // Bottom-right curve
+    ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
+    // Bottom-right to tail
+    ctx.lineTo(x + tailWidth / 2, bubbleY + bubbleHeight);
+    // Tail point
+    ctx.lineTo(x, y);
+    // Tail back up
+    ctx.lineTo(x - tailWidth / 2, bubbleY + bubbleHeight);
+    // Bottom-left to corner
+    ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
+    // Bottom-left curve
+    ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
+    // Left edge
+    ctx.lineTo(bubbleX, bubbleY + radius);
+    // Top-left curve
+    ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
+    ctx.closePath();
+    ctx.stroke();
+    
+    // Draw text
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    let textY = y - bubbleHeight - tailHeight + padding + lineHeight / 2;
+    for (const line of lines) {
+      ctx.fillText(line, x, textY);
+      textY += lineHeight;
+    }
+  }
+
+  drawInteractPrompt(state, playerX, playerY) {
+    const { ctx, canvas } = this;
+
+    if (!state.player) return;
+
+    const player = state.player;
+    const playerCenterX = player.x + player.w / 2;
+    const playerCenterY = player.y + player.h / 2;
+
+    let nearObject = false;
+
+    // Check if player is close to the statue (within 150 pixels)
+    if (state.slimeKingStatue) {
+      const statue = state.slimeKingStatue;
+      const statueCenterX = statue.x + statue.w / 2;
+      const statueCenterY = statue.y + statue.h / 2;
+
+      const statueDistance = Math.sqrt(
+        Math.pow(playerCenterX - statueCenterX, 2) +
+        Math.pow(playerCenterY - statueCenterY, 2)
+      );
+
+      if (statueDistance < 150) {
+        nearObject = true;
+      }
+    }
+
+    // Check if player is close to the poison pool (within 120 pixels)
+    if (!nearObject && state.poisonPool) {
+      const pool = state.poisonPool;
+      const poolCenterX = pool.x + pool.w / 2;
+      const poolCenterY = pool.y + pool.h / 2;
+
+      const poolDistance = Math.sqrt(
+        Math.pow(playerCenterX - poolCenterX, 2) +
+        Math.pow(playerCenterY - poolCenterY, 2)
+      );
+
+      if (poolDistance < 120) {
+        nearObject = true;
+      }
+    }
+
+    // Show interact prompt if close enough and not already showing dialog
+    if (nearObject && !state.pedestalTextVisible) {
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.translate(0, 0);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+
+      // Draw prompt above the player
+      const promptX = playerX;
+      const promptY = playerY - 60;
+
+      // Background box
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillRect(promptX - 50, promptY - 15, 100, 30);
+
+      // Border
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(promptX - 50, promptY - 15, 100, 30);
+
+      // Text
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Press F', promptX, promptY);
+
+      ctx.restore();
+    }
+  }
+
+  drawMutationCutsceneEffects(cutscene, player, state) {
+    const { ctx } = this;
+    const baseX = player.x + player.w / 2;
+    const baseY = player.y + player.h - 10;
+
+    // Draw player during all mutation cutscene phases (or zoom-out phase)
+    const inZoomOut = !cutscene && state.mutationCutsceneEnded && state.mutationPlayerScale !== undefined;
+    const shouldDrawPlayer = (cutscene && (cutscene.zoomPhase === 'in' || cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut;
+    
+    if (shouldDrawPlayer) {
+      ctx.save();
+      
+      // During 'in' phase, draw normal player (no warping yet)
+      if (cutscene && cutscene.zoomPhase === 'in') {
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY, player.w / 2, player.h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY - 8, player.w / 2.5, player.h / 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // During 'wavey' and 'explosion' phases (and zoom-out), draw warped player
+      else if ((cutscene && (cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut) {
+        // Apply wave distortion effect
+        const waveIntensity = cutscene ? (cutscene.waveIntensity || 0) : 0;
+        const scale = cutscene ? (cutscene.playerScale || 1) : (state.mutationPlayerScale || 1);
+        
+        // Draw glowing aura around player
+        const auraAlpha = 0.4 + waveIntensity * 0.2;
+        ctx.fillStyle = `rgba(100, 255, 150, ${auraAlpha})`;
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY, (player.w / 2) * scale * 1.3, (player.h / 2) * scale * 1.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw warped player body
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        
+        // Create wavy ellipse using multiple curves
+        const segments = 32;
+        for (let i = 0; i <= segments; i++) {
+          const angle = (i / segments) * Math.PI * 2;
+          const waveOffset = Math.sin(angle * 3 + cutscene.elapsed * 8) * waveIntensity * 5;
+          const x = baseX + (player.w / 2) * scale * Math.cos(angle) * (1 + waveOffset / (player.w / 2));
+          const y = baseY + (player.h / 2) * scale * Math.sin(angle) * (1 + waveOffset / (player.h / 2));
+          
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.fill();
+        
+        // Draw eye
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY - 8 * scale, (player.w / 2.5) * scale, (player.h / 3) * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      ctx.restore();
+    }
+
+    // Draw mutation cutscene particles (always draw if they exist, even after cutscene ends)
+    if (state && state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
+      ctx.save();
+      for (let particle of state.mutationCutsceneParticles) {
+        const alpha = Math.max(0, particle.life / particle.maxLife);
+        ctx.fillStyle = `rgba(100, 255, 150, ${alpha * 0.8})`;
+        ctx.beginPath();
+        ctx.ellipse(particle.x, particle.y, particle.size / 2, particle.size / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw intense light flash during explosion (only if cutscene is active)
+    if (cutscene && cutscene.zoomPhase === 'explosion') {
+      const progress = cutscene.elapsed / cutscene.duration;
+      if (progress > 0.8) {
+        const explosionPhase = (progress - 0.8) / 0.2;
+        const flashAlpha = (1 - explosionPhase) * 0.5;
+        ctx.fillStyle = `rgba(100, 255, 150, ${flashAlpha})`;
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      }
+    }
+  }
 
 }

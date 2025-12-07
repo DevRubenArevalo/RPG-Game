@@ -47,6 +47,12 @@ export class InputManager {
       e.preventDefault();
       return;
     }
+    if (key === 'p') {
+      state.debugPaused = !state.debugPaused;
+      console.log('🔍 [DEBUG PAUSE]', state.debugPaused ? 'PAUSED' : 'RESUMED');
+      e.preventDefault();
+      return;
+    }
     if (key === 'k') {
       this.toggleMovementOverlay();
       e.preventDefault();
