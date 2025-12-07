@@ -120,9 +120,7 @@ export class Renderer {
         });
       }
       
-      // Draw player
-      const invuln = player.invulnTimer > 0;
-      if (invuln) ctx.globalAlpha = 0.5;
+      // Calculate player position variables (needed for health bar even if player is hidden)
       const idleBreathe = 1 + 0.02 * Math.sin(player.idleTimer * 2.5);
       const idleSquish = 1 - 0.04 * Math.sin(player.idleTimer * 3.2 + Math.PI / 2);
       const duckTransition = player.duckTransition || 0;
@@ -132,31 +130,37 @@ export class Renderer {
       const baseX = player.x + player.w / 2;
       const baseY = player.y + player.h - 10;
       const eyeOffsetY = 8 - duckTransition * 6;  // Smoothly transition from 8 to 2
-      
-      // Keep visual center fixed by not adjusting - ellipse already centers correctly
       const visualBaseX = baseX;
       
-      // Draw mutation pulse effect if active
-      if (player.mutationTimer > 0) {
-        const mutationPulse = 1 - (player.mutationTimer / 0.6); // 0 to 1 over 0.6 seconds
-        const pulseSize = 1 + mutationPulse * 0.5; // Expands outward
-        const pulseAlpha = (1 - mutationPulse) * 0.6; // Fades out
-        ctx.fillStyle = `rgba(100, 255, 150, ${pulseAlpha})`;
+      // Draw player (hide only during mutation cutscene zoom animation since it's drawn in drawMutationCutsceneEffects)
+      // Show during pre-mutation transition and normal gameplay to see animations
+      const showNormalPlayer = !state.mutationCutscene && !state.mutationCutsceneEnded;
+      if (showNormalPlayer) {
+        const invuln = player.invulnTimer > 0;
+        if (invuln) ctx.globalAlpha = 0.5;
+      
+        // Draw mutation pulse effect if active
+        if (player.mutationTimer > 0) {
+          const mutationPulse = 1 - (player.mutationTimer / 0.6); // 0 to 1 over 0.6 seconds
+          const pulseSize = 1 + mutationPulse * 0.5; // Expands outward
+          const pulseAlpha = (1 - mutationPulse) * 0.6; // Fades out
+          ctx.fillStyle = `rgba(100, 255, 150, ${pulseAlpha})`;
+          ctx.beginPath();
+          ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX * pulseSize, (player.h / 2) * squishY * pulseSize, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        ctx.fillStyle = player.color;
         ctx.beginPath();
-        ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX * pulseSize, (player.h / 2) * squishY * pulseSize, 0, 0, Math.PI * 2);
+        ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX, (player.h / 2) * squishY, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(visualBaseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (invuln) ctx.globalAlpha = 1;
       }
-      
-      ctx.fillStyle = player.color;
-      ctx.beginPath();
-      ctx.ellipse(visualBaseX, baseY, (player.w / 2) * squishX, (player.h / 2) * squishY, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#3ba389';
-      ctx.beginPath();
-      ctx.ellipse(visualBaseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
-      ctx.fill();
-      
-      if (invuln) ctx.globalAlpha = 1;
       
       // Draw health bar with pop-in animation during spawn
       if (state.spawnAnimationProgress !== undefined) {
@@ -1948,44 +1952,61 @@ export class Renderer {
     const baseX = player.x + player.w / 2;
     const baseY = player.y + player.h - 10;
 
-    // Draw wavey/warped player during animation (active cutscene OR zoom-out phase)
+    // Draw player during all mutation cutscene phases (or zoom-out phase)
     const inZoomOut = !cutscene && state.mutationCutsceneEnded && state.mutationPlayerScale !== undefined;
-    if ((cutscene && (cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut) {
+    const shouldDrawPlayer = (cutscene && (cutscene.zoomPhase === 'in' || cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut;
+    
+    if (shouldDrawPlayer) {
       ctx.save();
       
-      // Apply wave distortion effect
-      const waveIntensity = cutscene ? (cutscene.waveIntensity || 0) : 0;
-      const scale = cutscene ? (cutscene.playerScale || 1) : (state.mutationPlayerScale || 1);
-      
-      // Draw glowing aura around player
-      const auraAlpha = 0.4 + waveIntensity * 0.2;
-      ctx.fillStyle = `rgba(100, 255, 150, ${auraAlpha})`;
-      ctx.beginPath();
-      ctx.ellipse(baseX, baseY, (player.w / 2) * scale * 1.3, (player.h / 2) * scale * 1.3, 0, 0, Math.PI * 2);
-      ctx.fill();
-      
-      // Draw warped player body
-      ctx.fillStyle = player.color;
-      ctx.beginPath();
-      
-      // Create wavy ellipse using multiple curves
-      const segments = 32;
-      for (let i = 0; i <= segments; i++) {
-        const angle = (i / segments) * Math.PI * 2;
-        const waveOffset = Math.sin(angle * 3 + cutscene.elapsed * 8) * waveIntensity * 5;
-        const x = baseX + (player.w / 2) * scale * Math.cos(angle) * (1 + waveOffset / (player.w / 2));
-        const y = baseY + (player.h / 2) * scale * Math.sin(angle) * (1 + waveOffset / (player.h / 2));
+      // During 'in' phase, draw normal player (no warping yet)
+      if (cutscene && cutscene.zoomPhase === 'in') {
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY, player.w / 2, player.h / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
         
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY - 8, player.w / 2.5, player.h / 3, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.fill();
-      
-      // Draw eye
-      ctx.fillStyle = '#3ba389';
-      ctx.beginPath();
-      ctx.ellipse(baseX, baseY - 8 * scale, (player.w / 2.5) * scale, (player.h / 3) * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
+      // During 'wavey' and 'explosion' phases (and zoom-out), draw warped player
+      else if ((cutscene && (cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut) {
+        // Apply wave distortion effect
+        const waveIntensity = cutscene ? (cutscene.waveIntensity || 0) : 0;
+        const scale = cutscene ? (cutscene.playerScale || 1) : (state.mutationPlayerScale || 1);
+        
+        // Draw glowing aura around player
+        const auraAlpha = 0.4 + waveIntensity * 0.2;
+        ctx.fillStyle = `rgba(100, 255, 150, ${auraAlpha})`;
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY, (player.w / 2) * scale * 1.3, (player.h / 2) * scale * 1.3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw warped player body
+        ctx.fillStyle = player.color;
+        ctx.beginPath();
+        
+        // Create wavy ellipse using multiple curves
+        const segments = 32;
+        for (let i = 0; i <= segments; i++) {
+          const angle = (i / segments) * Math.PI * 2;
+          const waveOffset = Math.sin(angle * 3 + cutscene.elapsed * 8) * waveIntensity * 5;
+          const x = baseX + (player.w / 2) * scale * Math.cos(angle) * (1 + waveOffset / (player.w / 2));
+          const y = baseY + (player.h / 2) * scale * Math.sin(angle) * (1 + waveOffset / (player.h / 2));
+          
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.fill();
+        
+        // Draw eye
+        ctx.fillStyle = '#3ba389';
+        ctx.beginPath();
+        ctx.ellipse(baseX, baseY - 8 * scale, (player.w / 2.5) * scale, (player.h / 3) * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       
       ctx.restore();
     }

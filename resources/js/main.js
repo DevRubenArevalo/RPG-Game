@@ -1741,6 +1741,24 @@ function playerDamagePerTick() {
   if (player.health >= 10) return 2;
   return 1;
 }
+function updatePreMutationTransition(dt) {
+  if (!state.preMutationTransition) return;
+  
+  const transition = state.preMutationTransition;
+  transition.elapsed += dt;
+  
+  console.log('🔄 Pre-mutation transition progress:', (transition.elapsed / transition.duration * 100).toFixed(1) + '%', 'duckTransition:', player.duckTransition.toFixed(3));
+  
+  // Wait for duck transition to complete (or timeout)
+  if (player.duckTransition <= 0.01 || transition.elapsed >= transition.duration) {
+    console.log('✅ Pre-mutation transition complete, starting mutation cutscene');
+    state.preMutationTransition = null;
+    player.duckTransition = 0;
+    player.ducking = false;
+    startMutationCutscene();
+  }
+}
+
 function updateMutationCutscene(dt) {
   if (!state.mutationCutscene) return;
   
@@ -1871,6 +1889,27 @@ function mutateSlime() {
   console.log('✨ MUTATION TRIGGERED!');
   console.log('  Camera pos:', {x: camera.x.toFixed(1), y: camera.y.toFixed(1)});
   console.log('  Player pos:', {x: player.x.toFixed(1), y: player.y.toFixed(1)});
+  console.log('  Player ducking:', player.ducking, 'duckTransition:', player.duckTransition);
+  
+  // If player is ducking, start pre-mutation transition to idle
+  if (player.duckTransition > 0) {
+    console.log('🔄 Starting pre-mutation transition: duck -> idle');
+    state.preMutationTransition = {
+      elapsed: 0,
+      duration: 0.25, // Match the duck transition duration
+      targetDuckTransition: 0,
+    };
+    // Set ducking to false so the animation transitions to idle
+    player.ducking = false;
+    return; // Wait for transition to complete before starting mutation
+  }
+  
+  // Start actual mutation cutscene
+  startMutationCutscene();
+}
+
+function startMutationCutscene() {
+  console.log('✨ Starting mutation cutscene animation');
   
   // Increase mutation level
   player.mutationLevel += 1;
@@ -1878,6 +1917,10 @@ function mutateSlime() {
   // Grant acid trail ability upgrade
   state.upgrades.acid_trail = true;
   console.log('✨ Acid trail enabled:', state.upgrades.acid_trail);
+  
+  // Ensure player is not ducking
+  player.ducking = false;
+  player.duckTransition = 0;
   
   // Start mutation cutscene
   state.mutationCutscene = {
@@ -2242,6 +2285,12 @@ function updateOpeningCutscene(dt) {
     return;
   }
   
+  // Handle pre-mutation transition if active (takes priority before mutation cutscene)
+  if (state.preMutationTransition) {
+    updatePreMutationTransition(dt);
+    return;
+  }
+  
   // Handle mutation cutscene if active (takes priority over normal cutscene phases)
   if (state.mutationCutscene) {
     updateMutationCutscene(dt);
@@ -2322,6 +2371,8 @@ function updateOpeningCutscene(dt) {
       state.mutationDebugLogged = false;
       state.mutationZoomOutLogged = false;
       state.cameraLockedDuringMutation = false;
+      state.mutationComplete = true; // Flag that mutation is done and player can proceed
+      console.log('✅ Setting mutationComplete = true - player can now move to right edge to transition');
       // Fall through to normal cutscene phase handling below
     } else {
       // Still zooming out, skip normal cutscene phases
@@ -2445,6 +2496,25 @@ function updateOpeningCutscene(dt) {
       // Auto-close dialog if player walks away from interactable
       autoCloseDialogIfTooFar();
       
+      // Check if mutation is complete and player touches right wall to proceed to main game
+      if (state.mutationComplete) {
+        const viewportWidth = canvas.width;
+        const rightEdgeThreshold = viewportWidth - 10;
+        const playerRightEdge = player.x + player.w;
+        const atRightEdge = playerRightEdge >= rightEdgeThreshold;
+        
+        if (!state.transitionCheckLogged) {
+          console.log('✅ Mutation complete - watching for player to reach right edge to transition');
+          state.transitionCheckLogged = true;
+        }
+        
+        if (atRightEdge) {
+          console.log('🚀 Player touched right wall - transitioning to main game');
+          exitCutsceneToMainGame();
+          return;
+        }
+      }
+      
       break;
     }
   }
@@ -2456,12 +2526,20 @@ function updateCutsceneCamera() {
   
   // During mutation cutscene or zoom-out, allow camera to follow player (don't lock it)
   if (state.mutationCutscene || state.mutationCutsceneEnded) {
-    console.log('🎥 [CUTSCENE CAMERA] Skipping lock - mutation active, letting updateCamera() handle it');
+    if (!state.cutsceneCameraSkipLogged) {
+      console.log('🎥 [CUTSCENE CAMERA] Skipping lock - mutation active, letting updateCamera() handle it');
+      state.cutsceneCameraSkipLogged = true;
+    }
+    state.cutsceneCameraLockLogged = false; // Reset lock flag when skipping
     return;
   }
   
   // Lock camera at starting position (no movement)
-  console.log('🎥 [CUTSCENE CAMERA] Locking camera to (0, 0)');
+  if (!state.cutsceneCameraLockLogged) {
+    console.log('🎥 [CUTSCENE CAMERA] Locking camera to (0, 0)');
+    state.cutsceneCameraLockLogged = true;
+  }
+  state.cutsceneCameraSkipLogged = false; // Reset skip flag when locking
   camera.x = 0;
   camera.y = 0;
 }
@@ -2475,6 +2553,30 @@ function exitCutsceneToMainGame() {
   // Seed the world now that we're entering the main game
   worldController.seedWorld();
   console.log('✅ World seeded, main game should start now');
+  
+  // Position player at left entrance (safe zone)
+  player.x = 100; // Start well into the safe zone
+  player.y = world.groundY - player.h;
+  player.vx = 0;
+  player.vy = 0;
+  
+  // Start entrance cutscene: zoom in on player, then zoom out
+  state.entranceCutscene = {
+    active: true,
+    phase: 'zoom-in', // 'zoom-in' -> 'pause' -> 'zoom-out' -> 'complete'
+    timer: 0,
+    zoomInDuration: 1.0,   // 1 second to zoom in
+    pauseDuration: 0.5,    // 0.5 second pause
+    zoomOutDuration: 2.0,  // 2 seconds to zoom out
+    startZoom: 1.0,
+    targetZoom: 2.5,
+  };
+  
+  // Set camera to follow player at entrance
+  camera.x = player.x + player.w / 2 - canvas.width / 2;
+  camera.y = player.y + player.h / 2 - canvas.height / 2;
+  
+  console.log('🎬 Starting entrance cutscene - player at entrance (x:', player.x, ')');
 }
 
 function checkPlayerInPoisonPool(dt) {

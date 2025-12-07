@@ -195,6 +195,12 @@ export class RoomController {
     playerManager,
     worldController,
   }) {
+    // Handle entrance cutscene if active
+    if (state.entranceCutscene?.active) {
+      this.updateEntranceCutscene(dt, state, player, canvas);
+      return; // Skip normal gameplay during entrance cutscene
+    }
+    
     // Standard main game loop updates
     // All the normal game updates happen here
     const input = {
@@ -284,5 +290,64 @@ export class RoomController {
    */
   isMainGame() {
     return this.roomType === 'main';
+  }
+
+  /**
+   * Update entrance cutscene (zoom in, pause, zoom out)
+   */
+  updateEntranceCutscene(dt, state, player, canvas) {
+    const cutscene = state.entranceCutscene;
+    cutscene.timer += dt;
+
+    switch (cutscene.phase) {
+      case 'zoom-in':
+        // Zoom from 1.0 to 2.5 over zoomInDuration
+        const zoomInProgress = Math.min(cutscene.timer / cutscene.zoomInDuration, 1);
+        const easedZoomIn = this.easeInOutCubic(zoomInProgress);
+        state.cameraZoom = cutscene.startZoom + (cutscene.targetZoom - cutscene.startZoom) * easedZoomIn;
+        
+        if (zoomInProgress >= 1) {
+          console.log('🎬 Entrance: Zoom-in complete, pausing');
+          cutscene.phase = 'pause';
+          cutscene.timer = 0;
+        }
+        break;
+
+      case 'pause':
+        // Hold at zoomed-in view
+        state.cameraZoom = cutscene.targetZoom;
+        
+        if (cutscene.timer >= cutscene.pauseDuration) {
+          console.log('🎬 Entrance: Pause complete, zooming out');
+          cutscene.phase = 'zoom-out';
+          cutscene.timer = 0;
+        }
+        break;
+
+      case 'zoom-out':
+        // Zoom from 2.5 back to 1.0 over zoomOutDuration
+        const zoomOutProgress = Math.min(cutscene.timer / cutscene.zoomOutDuration, 1);
+        const easedZoomOut = this.easeInOutCubic(zoomOutProgress);
+        state.cameraZoom = cutscene.targetZoom - (cutscene.targetZoom - cutscene.startZoom) * easedZoomOut;
+        
+        if (zoomOutProgress >= 1) {
+          console.log('✅ Entrance cutscene complete - gameplay begins!');
+          state.cameraZoom = 1.0;
+          cutscene.phase = 'complete';
+          cutscene.active = false;
+        }
+        break;
+    }
+
+    // Keep camera centered on player during entire entrance cutscene
+    state.camera.x = player.x + player.w / 2 - canvas.width / (2 * state.cameraZoom);
+    state.camera.y = player.y + player.h / 2 - canvas.height / (2 * state.cameraZoom);
+  }
+
+  /**
+   * Easing function for smooth animations
+   */
+  easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 }

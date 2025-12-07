@@ -87,5 +87,6 @@ export class GameState {
     this.mutationCutsceneEnded = false;  // Flag to know when to transition back to normal rendering
     this.mutationCutsceneParticles = [];  // Visual-only particles for mutation cutscene
     this.debugPaused = false;  // Debug pause - freezes all animations and game loop (press P)
+    this.preMutationTransition = null;  // Pre-mutation transition state (duck to idle)
   }
 }
