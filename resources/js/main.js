@@ -450,11 +450,7 @@ function updateCamera() {
   const maxCameraY = Math.max(0, world.height - canvas.height);
   
   if (state.cinematicCameraX != null) {
-    const oldX = camera.x;
     camera.x = clamp(state.cinematicCameraX, 0, maxCameraX);
-    if (oldX !== camera.x) {
-      console.log('🎥 [CINEMATIC] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1));
-    }
   } else {
     // During cutscene mutation, camera stays locked at 0 (entire scene fits in viewport)
     // Only move camera in normal gameplay
@@ -467,12 +463,7 @@ function updateCamera() {
     } else {
       // Normal gameplay camera following
       const desired = player.x - viewRightMargin;
-      const oldX = camera.x;
       camera.x = clamp(desired, 0, maxCameraX);
-      
-      if (oldX !== camera.x) {
-        console.log('🎥 [GAMEPLAY] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1), '| Player.x:', player.x.toFixed(1));
-      }
     }
   }
   
