@@ -704,6 +704,18 @@ button:hover {
   letter-spacing: 0.05em;
 }
 
+.game-version {
+  position: fixed;
+  bottom: 0.5em;
+  left: 0.5em;
+  font-size: 12px;
+  color: rgba(53, 208, 186, 0.5);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+  z-index: 1000;
+}
+
 .pause-abilities {
   text-align: center;
   margin-bottom: 16px;
