@@ -1,11 +1,6 @@
 // VERSION CONTROL - Single source of truth
-// Update this ONE line to deploy a new version
+// Update this version number when deploying new releases
 const VERSION = '0.3.2';
 
-// Export for ES6 modules (main app)
+// Export for ES6 modules
 export { VERSION };
-
-// Expose for service worker (non-module context)
-if (typeof self !== 'undefined' && !self.document) {
-  self.VERSION = VERSION;
-}

@@ -132,8 +132,7 @@ export class Renderer {
       const eyeOffsetY = 8 - duckTransition * 6;  // Smoothly transition from 8 to 2
       const visualBaseX = baseX;
       
-      // Draw player (hide only during mutation cutscene zoom animation since it's drawn in drawMutationCutsceneEffects)
-      // Show during pre-mutation transition and normal gameplay to see animations
+      // Draw player (hide only during mutation cutscene since it's drawn in drawMutationCutsceneEffects)
       const showNormalPlayer = !state.mutationCutscene && !state.mutationCutsceneEnded;
       if (showNormalPlayer) {
         const invuln = player.invulnTimer > 0;
@@ -1952,15 +1951,16 @@ export class Renderer {
     const baseX = player.x + player.w / 2;
     const baseY = player.y + player.h - 10;
 
-    // Draw player during all mutation cutscene phases (or zoom-out phase)
+    // Always draw player during mutation cutscene
     const inZoomOut = !cutscene && state.mutationCutsceneEnded && state.mutationPlayerScale !== undefined;
-    const shouldDrawPlayer = (cutscene && (cutscene.zoomPhase === 'in' || cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut;
     
-    if (shouldDrawPlayer) {
+    if (cutscene || inZoomOut) {
       ctx.save();
       
+      const currentPhase = cutscene ? cutscene.zoomPhase : 'zoom-out';
+      
       // During 'in' phase, draw normal player (no warping yet)
-      if (cutscene && cutscene.zoomPhase === 'in') {
+      if (currentPhase === 'in') {
         ctx.fillStyle = player.color;
         ctx.beginPath();
         ctx.ellipse(baseX, baseY, player.w / 2, player.h / 2, 0, 0, Math.PI * 2);
@@ -1971,8 +1971,8 @@ export class Renderer {
         ctx.ellipse(baseX, baseY - 8, player.w / 2.5, player.h / 3, 0, 0, Math.PI * 2);
         ctx.fill();
       }
-      // During 'wavey' and 'explosion' phases (and zoom-out), draw warped player
-      else if ((cutscene && (cutscene.zoomPhase === 'wavey' || cutscene.zoomPhase === 'explosion')) || inZoomOut) {
+      // During 'wavey', 'explosion', and 'zoom-out' phases, draw warped player
+      else if (currentPhase === 'wavey' || currentPhase === 'explosion' || currentPhase === 'zoom-out') {
         // Apply wave distortion effect
         const waveIntensity = cutscene ? (cutscene.waveIntensity || 0) : 0;
         const scale = cutscene ? (cutscene.playerScale || 1) : (state.mutationPlayerScale || 1);

@@ -3,26 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>From Nothing: A Slime's Journey</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="stylesheet" href="./resources/css/custom.css">
-  <script>
-    // Register Service Worker for cache busting
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js')
-          .then((registration) => {
-            console.log('✅ Service Worker registered:', registration.scope);
-            
-            // Check for updates every 60 seconds
-            setInterval(() => {
-              registration.update();
-            }, 60000);
-          })
-          .catch((error) => {
-            console.error('❌ Service Worker registration failed:', error);
-          });
-      });
-    }
-  </script>
 </head>
 <body>
   <div class="game-wrap">
