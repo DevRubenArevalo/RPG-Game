@@ -136,7 +136,8 @@ export class Renderer {
       const showNormalPlayer = !state.mutationCutscene && !state.mutationCutsceneEnded;
       if (showNormalPlayer) {
         const invuln = player.invulnTimer > 0;
-        if (invuln) ctx.globalAlpha = 0.5;
+        // Set base opacity to 0.8, or 0.5 if invulnerable
+        ctx.globalAlpha = invuln ? 0.5 : 0.8;
       
         // Draw mutation pulse effect if active
         if (player.mutationTimer > 0) {
@@ -158,7 +159,8 @@ export class Renderer {
         ctx.ellipse(visualBaseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
         ctx.fill();
         
-        if (invuln) ctx.globalAlpha = 1;
+        // Reset global alpha
+        ctx.globalAlpha = 1;
       }
       
       // Draw health bar with pop-in animation during spawn
@@ -251,7 +253,8 @@ export class Renderer {
       
       // Draw player
       const invuln = player.invulnTimer > 0;
-      if (invuln) ctx.globalAlpha = 0.5;
+      // Set base opacity to 0.8, or 0.5 if invulnerable
+      ctx.globalAlpha = invuln ? 0.5 : 0.8;
       const baseX = player.x + player.w / 2;
       const baseY = player.y + player.h - 10;
       const squishX = 1;
@@ -267,7 +270,8 @@ export class Renderer {
       ctx.ellipse(baseX, baseY - eyeOffsetY, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
       ctx.fill();
       
-      if (invuln) ctx.globalAlpha = 1;
+      // Reset global alpha
+      ctx.globalAlpha = 1;
       
       // Draw mutation cutscene particles (still falling from explosion)
       if (state.mutationCutsceneParticles && state.mutationCutsceneParticles.length > 0) {
@@ -426,6 +430,9 @@ export class Renderer {
     if (invuln) {
       const flash = 0.5 + 0.5 * Math.sin(performance.now() * 0.02);
       ctx.globalAlpha = 0.4 + 0.5 * flash;
+    } else {
+      // Set base opacity to 0.8 when not invulnerable
+      ctx.globalAlpha = 0.8;
     }
     const idleBreathe = 1 + 0.04 * Math.sin(player.idleTimer * 3.2);
     const idleSquish = 1 - 0.04 * Math.sin(player.idleTimer * 3.2 + Math.PI / 2);
@@ -451,7 +458,8 @@ export class Renderer {
       ctx.ellipse(baseX, baseY - 8, (player.w / 2.5) * squishX, (player.h / 3) * squishY, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (invuln) ctx.globalAlpha = 1;
+    // Reset global alpha
+    ctx.globalAlpha = 1;
     if (state.debugShowCollisions) {
       this.drawPlayerCollisionDebug(player);
       enemyProjectiles.forEach((proj) => this.drawProjectileCollisionDebug(proj));
@@ -839,7 +847,7 @@ export class Renderer {
   }
 
   drawBoss(boss) {
-    const { ctx } = this;
+    const { ctx, state } = this;
     
     // Don't draw if invisible (after explosion)
     if (boss.invisible) {
@@ -862,8 +870,19 @@ export class Renderer {
     const radius = (boss.w / 2) * (1 - blend);
     const centerX = boss.x + boss.w / 2;
     const centerY = boss.y + boss.h / 2;
-    ctx.fillStyle = fillColor;
+    
+    // Set boss to be slightly transparent (0.85 opacity)
+    ctx.globalAlpha = 0.85;
+    
+    // Draw main body (outer green layer)
+    // When shield buff is active, make outer ring metallic gray
+    const hasShieldBuff = boss.invulnerabilityTimer > 0 || (boss.buffs && boss.buffs.some(b => b.type === 'shield'));
+    const outerColor = hasShieldBuff ? '#8b9a9d' : fillColor; // Metallic gray when shielded
+    
+    ctx.fillStyle = outerColor;
     this.drawRoundedRect(ctx, boss.x, boss.y, boss.w, boss.h, radius);
+    
+    // Draw inner body (darker green center) - this goes on top of outer layer
     ctx.fillStyle = 'rgba(45, 147, 122, 0.85)';
     const inset = 0.15 - blend * 0.05;
     this.drawRoundedRect(
@@ -874,18 +893,195 @@ export class Renderer {
       boss.h * (1 - inset * 2),
       Math.max(4, radius * 0.6),
     );
-    ctx.strokeStyle = '#0b1f1c';
-    ctx.lineWidth = Math.max(6, boss.h * 0.04);
+    
+    // Metallic sheen effect - Traveling white lines that sweep across outer green ring every 2 seconds
+    // ONLY ACTIVE when boss has shield buff (invulnerability)
+    // Only animate when game is not paused
+    
+    if (hasShieldBuff && !state.paused) {
+      const currentTime = performance.now() * 0.001; // Convert to seconds
+      const sheenTime = currentTime % 2; // 2 second cycle
+      const sheenProgress = sheenTime / 2; // 0 to 1
+      
+      // Sheen is active for first 0.6 seconds of the 2 second cycle
+      if (sheenProgress <= 0.3) {
+        // Fade in quickly, stay bright, fade out
+        let sheenAlpha;
+        if (sheenProgress < 0.05) {
+          sheenAlpha = sheenProgress / 0.05; // Fade in over first 0.1s
+        } else if (sheenProgress > 0.25) {
+          sheenAlpha = (0.3 - sheenProgress) / 0.05; // Fade out over last 0.1s
+        } else {
+          sheenAlpha = 1.0; // Full brightness in middle
+        }
+        
+        // Progress of the sweep across the boss (0 to 1) - takes 0.6 seconds
+        const sweepProgress = sheenProgress / 0.3;
+        
+        // Draw sheen lines directly on the main canvas with clipping
+        ctx.save();
+        
+        // Create clipping region for OUTER RING ONLY
+        ctx.beginPath();
+        // Outer edge
+        this.drawRoundedRectPath(ctx, boss.x, boss.y, boss.w, boss.h, radius);
+        // Inner edge (subtract)
+        const innerX = boss.x + boss.w * inset;
+        const innerY = boss.y + boss.h * inset;
+        const innerW = boss.w * (1 - inset * 2);
+        const innerH = boss.h * (1 - inset * 2);
+        const innerRadius = Math.max(4, radius * 0.6);
+        
+        // Move to start of inner rect to create hole
+        ctx.moveTo(innerX + innerRadius, innerY);
+        ctx.lineTo(innerX + innerW - innerRadius, innerY);
+        ctx.quadraticCurveTo(innerX + innerW, innerY, innerX + innerW, innerY + innerRadius);
+        ctx.lineTo(innerX + innerW, innerY + innerH - innerRadius);
+        ctx.quadraticCurveTo(innerX + innerW, innerY + innerH, innerX + innerW - innerRadius, innerY + innerH);
+        ctx.lineTo(innerX + innerRadius, innerY + innerH);
+        ctx.quadraticCurveTo(innerX, innerY + innerH, innerX, innerY + innerH - innerRadius);
+        ctx.lineTo(innerX, innerY + innerRadius);
+        ctx.quadraticCurveTo(innerX, innerY, innerX + innerRadius, innerY);
+        ctx.closePath();
+        
+        ctx.clip('evenodd'); // Use even-odd fill rule to create ring
+        
+        // Now draw the two diagonal white sheen lines
+        const sheenWidth = 15; // Width of each sheen line (thinner)
+        const diagonal = Math.sqrt(boss.w * boss.w + boss.h * boss.h); // Full diagonal length
+        const lineSpacing = 60; // Distance between the two parallel lines
+        
+        // Calculate travel: lines start off top-left, travel to bottom-right
+        const startOffset = -diagonal * 0.5; // Start well off screen
+        const endOffset = diagonal * 0.5; // End well off screen
+        const currentOffset = startOffset + (endOffset - startOffset) * sweepProgress;
+        
+        // Draw two PARALLEL lines traveling from top-left to bottom-right
+        // Rotate 45 degrees so lines go diagonally across the boss
+        ctx.save();
+        ctx.translate(boss.x + boss.w / 2, boss.y + boss.h / 2); // Move to center of boss
+        ctx.rotate(Math.PI / 4); // 45 degrees - this makes vertical lines become diagonal
+        
+        // First parallel line
+        const gradient1 = ctx.createLinearGradient(
+          currentOffset - sheenWidth, 0,
+          currentOffset + sheenWidth, 0
+        );
+        gradient1.addColorStop(0, `rgba(255, 255, 255, 0)`);
+        gradient1.addColorStop(0.5, `rgba(255, 255, 255, ${0.85 * sheenAlpha})`);
+        gradient1.addColorStop(1, `rgba(255, 255, 255, 0)`);
+        
+        ctx.fillStyle = gradient1;
+        ctx.fillRect(currentOffset - sheenWidth, -diagonal, sheenWidth * 2, diagonal * 2);
+        
+        // Second parallel line (offset by lineSpacing) - half opacity
+        const gradient2 = ctx.createLinearGradient(
+          currentOffset + lineSpacing - sheenWidth, 0,
+          currentOffset + lineSpacing + sheenWidth, 0
+        );
+        gradient2.addColorStop(0, `rgba(255, 255, 255, 0)`);
+        gradient2.addColorStop(0.5, `rgba(255, 255, 255, ${0.425 * sheenAlpha})`); // Half opacity (0.85 / 2)
+        gradient2.addColorStop(1, `rgba(255, 255, 255, 0)`);
+        
+        ctx.fillStyle = gradient2;
+        ctx.fillRect(currentOffset + lineSpacing - sheenWidth, -diagonal, sheenWidth * 2, diagonal * 2);
+        
+        ctx.restore();
+        
+        ctx.restore(); // Restore clipping
+      }
+    }
+    
+    // Draw eyes - different style when shield buff is active
     ctx.lineCap = 'round';
     const eyeOffset = boss.w * 0.18;
     const eyeWidth = boss.w * 0.14;
     const eyeY = boss.y + boss.h * 0.55;
-    ctx.beginPath();
-    ctx.moveTo(centerX - eyeOffset - eyeWidth / 2, eyeY);
-    ctx.lineTo(centerX - eyeOffset + eyeWidth / 2, eyeY);
-    ctx.moveTo(centerX + eyeOffset - eyeWidth / 2, eyeY);
-    ctx.lineTo(centerX + eyeOffset + eyeWidth / 2, eyeY);
-    ctx.stroke();
+    
+    if (hasShieldBuff) {
+      // Simple closed eyes (horizontal lines)
+      ctx.strokeStyle = '#0b1f1c';
+      ctx.lineWidth = Math.max(6, boss.h * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX - eyeOffset + eyeWidth / 2, eyeY);
+      ctx.moveTo(centerX + eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX + eyeOffset + eyeWidth / 2, eyeY);
+      ctx.stroke();
+      
+      // === WAVY TEAR RIVERS ===
+      // Flowing from outer edges of eyes down to bottom of face
+      // Clip at inner layer border
+      ctx.save();
+      
+      // Create clipping region for inner body
+      const inset = 0.15;
+      const innerX = boss.x + boss.w * inset;
+      const innerY = boss.y + boss.h * inset;
+      const innerW = boss.w * (1 - inset * 2);
+      const innerH = boss.h * (1 - inset * 2);
+      const innerRadius = Math.max(4, radius * 0.6);
+      
+      ctx.beginPath();
+      this.drawRoundedRectPath(ctx, innerX, innerY, innerW, innerH, innerRadius);
+      ctx.clip();
+      
+      // Draw wavy tear rivers
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.6)';
+      ctx.lineWidth = Math.max(4, boss.h * 0.025);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      const tearStartY = eyeY; // Start at eye level
+      const tearEndY = boss.y + boss.h * (1 - inset); // End at inner layer bottom
+      const tearHeight = tearEndY - tearStartY;
+      const waveFrequency = 8; // More frequent waves along the tear
+      const waveAmplitude = boss.w * 0.015; // Width of wave
+      const animationTime = performance.now() * 0.002; // Slow animation
+      
+      // Left tear river - starts from outermost part of left eye
+      ctx.beginPath();
+      const leftTearX = centerX - eyeOffset - eyeWidth / 2; // Outer edge of left eye
+      ctx.moveTo(leftTearX, tearStartY); // Start point is fixed at outer edge
+      for (let i = 1; i <= 50; i++) {
+        const t = i / 50;
+        const y = tearStartY + tearHeight * t;
+        // Wave starts from 0 at top, increases as it goes down - reversed direction
+        const waveOffset = Math.sin(t * Math.PI * waveFrequency - animationTime) * waveAmplitude * t;
+        const x = leftTearX + waveOffset;
+        
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      
+      // Right tear river - starts from outermost part of right eye
+      ctx.beginPath();
+      const rightTearX = centerX + eyeOffset + eyeWidth / 2; // Outer edge of right eye
+      ctx.moveTo(rightTearX, tearStartY); // Start point is fixed at outer edge
+      for (let i = 1; i <= 50; i++) {
+        const t = i / 50;
+        const y = tearStartY + tearHeight * t;
+        // Wave starts from 0 at top, increases as it goes down - reversed direction
+        const waveOffset = Math.sin(t * Math.PI * waveFrequency - animationTime) * waveAmplitude * t;
+        const x = rightTearX + waveOffset;
+        
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      
+      ctx.restore();
+    } else {
+      // Normal closed eyes (horizontal lines)
+      ctx.strokeStyle = '#0b1f1c';
+      ctx.lineWidth = Math.max(6, boss.h * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(centerX - eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX - eyeOffset + eyeWidth / 2, eyeY);
+      ctx.moveTo(centerX + eyeOffset - eyeWidth / 2, eyeY);
+      ctx.lineTo(centerX + eyeOffset + eyeWidth / 2, eyeY);
+      ctx.stroke();
+    }
+    
     if (boss.bossPhase === 'windup') {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.004);
       ctx.strokeStyle = `rgba(255, 210, 93, ${0.35 + pulse * 0.3})`;
@@ -894,6 +1090,9 @@ export class Renderer {
       ctx.ellipse(centerX, boss.groundY, boss.w * 0.65, boss.h * 0.1 + pulse * 10, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
+    
+    // Reset global alpha
+    ctx.globalAlpha = 1.0;
     ctx.restore();
   }
 
@@ -1109,66 +1308,214 @@ export class Renderer {
     if (!boss) return;
     const rows = 4;
     const perRow = Math.ceil((boss.maxHealth || 160) / rows);
-    let rowY = boss.y - 24;
-    let firstRowHealthData = null;
+    let rowY = boss.y - 24; // Starts at topmost visual position
+    let bottomVisualRowHealthData = null; // Store the bottommost visual row
+    
+    // NOTE: Health bars are drawn from TOP to BOTTOM visually (i=0 is top, i=3 is bottom)
+    // rowY DECREASES as we go (boss.y - 24, then -18 each iteration)
+    // In canvas coordinates, smaller Y = higher on screen, larger Y = lower on screen
+    // So the LAST iteration (i=3) has the SMALLEST Y value = HIGHEST on screen = TOP health bar
+    // We store the last iteration's data to align buffs with the visually TOPMOST health bar
     for (let i = 0; i < rows; i++) {
       const chunkStart = i * perRow;
       const chunkMax = Math.min(perRow, (boss.maxHealth || 0) - chunkStart);
       const chunkVal = Math.max(0, Math.min(chunkMax, boss.health - chunkStart));
       const healthData = this.drawHealthBar(boss.x + boss.w / 2, rowY, chunkVal, chunkMax);
-      if (i === 0) firstRowHealthData = healthData; // Store first row for buff display
-      rowY -= 18;
+      
+      // Store ALL rows, last one (i === 3) will be the bottommost visual bar
+      bottomVisualRowHealthData = healthData;
+      
+      rowY -= 18; // Move down for next bar
     }
-    // Draw boss buffs if any
-    if (firstRowHealthData) {
-      this.drawBuffsNextToHealthBar(firstRowHealthData, boss.buffs || []);
-    }
-    // Draw invulnerability buff if active (legacy support)
+    
+    // Build buff array including invulnerability shield
+    const buffs = [...(boss.buffs || [])];
     if (boss.invulnerabilityTimer > 0) {
-      this.drawBossInvulnerabilityBuff(boss);
+      buffs.push({
+        type: 'shield',
+        duration: boss.invulnerabilityTimer,
+        maxDuration: 10,
+      });
+    }
+    
+    // Draw boss buffs with proper spacing (aligned to bottommost visual health bar)
+    if (bottomVisualRowHealthData && buffs.length > 0) {
+      this.drawBossBuffsNextToHealthBar(bottomVisualRowHealthData, buffs);
     }
   }
 
-  drawBossInvulnerabilityBuff(boss) {
+  drawBossBuffsNextToHealthBar(healthBarData, buffs = []) {
     const { ctx } = this;
-    const barWidth = 40;
-    const barHeight = 16;
-    // Position to the right of the top health bar
-    const topHealthBarY = boss.y - 24;
-    const healthBarWidth = 40; // Standard health bar width from drawHealthBar
-    const x = boss.x + boss.w / 2 + healthBarWidth / 2 + 10; // Right of health bar with padding
-    const y = topHealthBarY - barHeight / 2; // Align with top health bar
-    
-    // Draw shield icon
-    const shieldSize = 12;
-    const shieldX = x - 20;
-    const shieldY = y + barHeight / 2 - shieldSize / 2;
+    // Calculate buff size: 4 health bars + padding between them
+    // Each health bar is 6px tall, with 18px spacing between rows (12px gap + 6px bar)
+    // So 4 bars = (6 * 4) + (12 * 3) = 24 + 36 = 60px
+    const buffSize = 60; // Square buff icons (4 health bars height with padding)
+    const buffSpacing = 20; // ~20px spacing from health bar
+    let buffX = healthBarData.barEndX + buffSpacing;
+    const buffY = healthBarData.barY; // Top-align buff with top health bar
+
+    buffs.forEach((buff) => {
+      if (buff.type === 'shield') {
+        this.drawShieldBuff(buffX, buffY, buffSize, buff.duration, buff.maxDuration);
+      } else {
+        // Draw generic buff (same as player buffs)
+        ctx.strokeStyle = buff.color || '#5dffba';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(buffX, buffY, buffSize, buffSize);
+        ctx.fillStyle = `${buff.color || '#5dffba'}33`;
+        ctx.fillRect(buffX, buffY, buffSize, buffSize);
+        ctx.fillStyle = buff.color || '#5dffba';
+        ctx.font = 'bold 8px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(buff.label || '●', buffX + buffSize / 2, buffY + buffSize / 2);
+      }
+      buffX += buffSize + 4; // 4px spacing between buffs
+    });
+  }
+
+  drawShieldBuff(x, y, size, duration, maxDuration) {
+    const { ctx, state } = this;
+    const progress = duration / maxDuration;
     
     ctx.save();
-    ctx.fillStyle = 'rgba(80, 147, 255, 0.8)';
-    // Draw shield shape (simplified rectangle with border)
-    ctx.fillRect(shieldX - shieldSize / 2, shieldY, shieldSize, shieldSize);
-    ctx.strokeStyle = 'rgba(100, 180, 255, 1)';
+    
+    // Draw dark background
+    ctx.fillStyle = 'rgba(8, 14, 26, 0.9)';
+    ctx.fillRect(x, y, size, size);
+    
+    // Draw blue border
+    ctx.strokeStyle = '#5093ff';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x, y, size, size);
+    
+    // Draw large shield icon in background
+    const shieldSize = size * 0.7; // Larger shield (70% of buff size)
+    const shieldX = x + size / 2;
+    const shieldY = y + size / 2;
+    
+    // Main shield body with gradient-like effect
+    ctx.fillStyle = 'rgba(80, 147, 255, 0.6)';
+    ctx.beginPath();
+    // Draw shield shape (classic shield with point at bottom)
+    ctx.moveTo(shieldX, shieldY - shieldSize / 2);
+    ctx.lineTo(shieldX + shieldSize / 2.2, shieldY - shieldSize / 2);
+    ctx.lineTo(shieldX + shieldSize / 2.2, shieldY + shieldSize / 4);
+    ctx.lineTo(shieldX, shieldY + shieldSize / 1.8);
+    ctx.lineTo(shieldX - shieldSize / 2.2, shieldY + shieldSize / 4);
+    ctx.lineTo(shieldX - shieldSize / 2.2, shieldY - shieldSize / 2);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Shield border
+    ctx.strokeStyle = 'rgba(100, 180, 255, 0.9)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(shieldX - shieldSize / 2, shieldY, shieldSize, shieldSize);
+    ctx.stroke();
     
-    // Draw cooldown bar
-    const progress = boss.invulnerabilityTimer / 10;
-    ctx.fillStyle = 'rgba(80, 147, 255, 0.3)';
-    ctx.fillRect(x, y, barWidth, barHeight);
-    ctx.strokeStyle = 'rgba(100, 180, 255, 0.8)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, barWidth, barHeight);
+    // Center cross design on shield
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(shieldX, shieldY - shieldSize / 3);
+    ctx.lineTo(shieldX, shieldY + shieldSize / 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(shieldX - shieldSize / 4, shieldY);
+    ctx.lineTo(shieldX + shieldSize / 4, shieldY);
+    ctx.stroke();
     
-    // Draw filled portion
-    ctx.fillStyle = 'rgba(80, 147, 255, 0.8)';
-    ctx.fillRect(x, y, barWidth * progress, barHeight);
+    // Animated gleem effect - travels across shield over time
+    const gleemTime = (state.gameTime || 0) % 2; // 2 second cycle
+    const gleemProgress = gleemTime / 2; // 0 to 1
+    const gleemX = shieldX - shieldSize / 2.5 + (shieldSize / 1.2) * gleemProgress;
+    const gleemWidth = 8;
+    
+    const gradient = ctx.createLinearGradient(gleemX - gleemWidth, shieldY, gleemX + gleemWidth, shieldY);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.6)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(gleemX - gleemWidth / 2, shieldY - shieldSize / 2, gleemWidth, shieldSize * 0.8);
+    
+    // Draw cooldown overlay using the square buff border as wrapper
+    const centerX = x + size / 2;
+    const centerY = y + size / 2;
+    const halfSize = size / 2 - 2.5; // Distance to inside edge of square border
+    
+    // Calculate the angle for the current progress (starts at top, goes clockwise)
+    const angle = -Math.PI / 2 + progress * Math.PI * 2;
+    
+    // Draw dark overlay that sweeps around the square (counter-clockwise)
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    
+    // Draw polygon from center to edge following the angle
+    // Sample points along the square perimeter from 0 to angle
+    const steps = 100;
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * progress;
+      const a = -Math.PI / 2 + t * Math.PI * 2;
+      
+      // Calculate point on square edge for this angle
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      
+      // Determine which edge of the square this angle points to
+      const abscos = Math.abs(cos);
+      const abssin = Math.abs(sin);
+      
+      let edgeX, edgeY;
+      if (abscos > abssin) {
+        // Left or right edge
+        edgeX = centerX + (cos > 0 ? halfSize : -halfSize);
+        edgeY = centerY + halfSize * sin / abscos;
+      } else {
+        // Top or bottom edge
+        edgeX = centerX + halfSize * cos / abssin;
+        edgeY = centerY + (sin > 0 ? halfSize : -halfSize);
+      }
+      
+      ctx.lineTo(edgeX, edgeY);
+    }
+    
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    
+    // Draw clock hand pointing to current progress (touches square border)
+    // Calculate end point on square edge
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const abscos = Math.abs(cos);
+    const abssin = Math.abs(sin);
+    
+    let handEndX, handEndY;
+    if (abscos > abssin) {
+      // Left or right edge
+      handEndX = centerX + (cos > 0 ? halfSize : -halfSize);
+      handEndY = centerY + halfSize * sin / abscos;
+    } else {
+      // Top or bottom edge
+      handEndX = centerX + halfSize * cos / abssin;
+      handEndY = centerY + (sin > 0 ? halfSize : -halfSize);
+    }
+    
+    ctx.strokeStyle = '#d9f2ff';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.lineTo(handEndX, handEndY);
+    ctx.stroke();
     
     // Draw time text
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.font = 'bold 10px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(boss.invulnerabilityTimer.toFixed(1), x + barWidth / 2, y + barHeight + 10);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(duration.toFixed(1), centerX, centerY + 1);
     
     ctx.restore();
   }
@@ -1216,8 +1563,26 @@ export class Renderer {
     ctx.fill();
   }
 
+  drawRoundedRectPath(ctx, x, y, width, height, radius) {
+    const r = Math.max(0, Math.min(Math.min(width, height) / 2, radius || 0));
+    if (r <= 0) {
+      ctx.rect(x, y, width, height);
+      return;
+    }
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
   drawBossStatsWindow(boss) {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, state } = this;
     const windowWidth = 400;
     const windowHeight = 500;
     const x = canvas.width - windowWidth - 20;
@@ -1245,6 +1610,13 @@ export class Renderer {
       projectileWaves = 3;
     }
 
+    // Calculate sheen timing for debug display
+    const currentTime = performance.now() * 0.001; // Convert to seconds
+    const sheenTime = currentTime % 2;
+    const sheenProgress = sheenTime / 2;
+    const sheenActive = sheenProgress <= 0.25;
+    const sheenAlpha = sheenActive ? (sheenProgress < 0.125 ? sheenProgress / 0.125 : (0.25 - sheenProgress) / 0.125) : 0;
+
     const stats = [
       `Difficulty Level: ${difficultyLevel}`,
       `Health: ${boss.health.toFixed(0)} / ${boss.maxHealth}`,
@@ -1266,6 +1638,13 @@ export class Renderer {
       `Phase Timer: ${boss.bossTimer?.toFixed(2) || '0'}s`,
       `Morph Mode: ${boss.morphMode || 'circle'}`,
       `Morph Progress: ${boss.morphProgress?.toFixed(2) || '0'}%`,
+      ``,
+      `--- Sheen Effect ---`,
+      `Game Paused: ${state.paused ? 'YES (Sheen Frozen)' : 'NO'}`,
+      `Sheen Cycle: ${sheenTime.toFixed(3)}s / 2.0s`,
+      `Sheen Progress: ${(sheenProgress * 100).toFixed(1)}%`,
+      `Sheen Active: ${sheenActive ? 'YES' : 'NO'}`,
+      `Sheen Alpha: ${sheenAlpha.toFixed(3)}`,
       ``,
       `--- Status ---`,
       `Invulnerability: ${boss.invulnerabilityTimer > 0 ? boss.invulnerabilityTimer.toFixed(1) + 's' : 'None'}`,

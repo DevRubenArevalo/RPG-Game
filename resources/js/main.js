@@ -1945,7 +1945,8 @@ function recordHighScore(distance) {
 }
 }
 
-function resetGame(toHome = false) {
+function resetGame(toHome = false, skipTutorial = true) {
+  console.log(`🔄 resetGame called (toHome: ${toHome}, skipTutorial: ${skipTutorial})`);
   shopController.resetUpgradeFlags();
   resetBossState();
   state.levelComplete = false;
@@ -2012,8 +2013,19 @@ function resetGame(toHome = false) {
     audio.stopLoop?.('music');
     audio.playHomeMusic?.();
     worldController.seedWorld();
+  } else if (skipTutorial) {
+    console.log('⏭️ Skipping tutorial - starting main game room');
+    state.homeScreenActive = false;
+    uiManager.setHomeScreenVisible(false);
+    
+    // Grant acid trail ability when skipping tutorial
+    state.upgrades.acid_trail = true;
+    console.log('✨ Acid trail enabled (tutorial skipped):', state.upgrades.acid_trail);
+    
+    roomController.initMainRoom(state, world);
+    audio.playLoop?.('music', audio.tracks.music[0], 0.4);
   } else {
-    console.log('🎮 Starting new game - NOT going to home screen');
+    console.log('🎮 Starting tutorial room');
     state.homeScreenActive = false;
     uiManager.setHomeScreenVisible(false);
     // Initialize tutorial room (opening cutscene)
