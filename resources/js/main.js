@@ -1114,6 +1114,7 @@ function spawnBoss() {
   coins.length = 0;
   slimeChunks.length = 0;
   slimeGlobs.length = 0;
+  traps.length = 0;
   enemies.push(boss);
   player.nextShopAt = Infinity;
   statusEl.textContent = 'A colossal slime descends...';
