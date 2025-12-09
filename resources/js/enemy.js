@@ -278,6 +278,10 @@ export function updateEnemies({
     }
 
     enemy.acidStackCooldown = Math.max(0, (enemy.acidStackCooldown || 0) - dt);
+    
+    // Check if boss has shield buff active (invulnerability)
+    const hasShieldBuff = enemy.invulnerabilityTimer > 0;
+    
     let touchingAcidCount = 0;
     for (const seg of trailSegments) {
       if (seg.life > 0 && overlap(enemy, seg)) {
@@ -291,7 +295,8 @@ export function updateEnemies({
       }
     }
 
-    if (touchingAcidCount > 0) {
+    // Only allow acid stack accumulation when shield buff is NOT active
+    if (touchingAcidCount > 0 && !hasShieldBuff) {
       if (!enemy.acidStacks || enemy.acidStacks < 1) {
         enemy.acidStacks = 1;
         enemy.acidStackTimer = 0;
@@ -309,15 +314,25 @@ export function updateEnemies({
       enemy.acidTimer = 0.25;
       enemy.acidDuration = ACID_DEBUFF_DURATION;
     } else {
-      enemy.acidTimer = Math.max(0, enemy.acidTimer - dt);
-      enemy.acidDuration = Math.max(0, enemy.acidDuration - dt);
-      enemy.acidStackTimer = 0;
-      if (enemy.acidDuration <= 0) {
+      // Clear stacks immediately if shield buff is active
+      if (hasShieldBuff) {
         enemy.acidStacks = 0;
+        enemy.acidDuration = 0;
+        enemy.acidStackTimer = 0;
+        enemy.acidTimer = 0;
+      } else {
+        // Normal decay when not touching acid and no shield
+        enemy.acidTimer = Math.max(0, enemy.acidTimer - dt);
+        enemy.acidDuration = Math.max(0, enemy.acidDuration - dt);
+        enemy.acidStackTimer = 0;
+        if (enemy.acidDuration <= 0) {
+          enemy.acidStacks = 0;
+        }
       }
     }
 
-    if (enemy.acidDuration > 0) {
+    // Only apply acid damage if shield buff is NOT active
+    if (enemy.acidDuration > 0 && !hasShieldBuff) {
       enemy.acidTickTimer -= dt;
       while (enemy.acidTickTimer <= 0 && enemy.acidDuration > 0) {
         enemy.acidTickTimer += ACID_TICK_INTERVAL;
@@ -371,9 +386,21 @@ export function updateEnemies({
         if (!player.alive) return;
         continue;
       }
-      const stomping = spikedShoes &&
-        player.vy > 0 &&
-        player.prevY + player.h <= enemy.y + Math.min(enemy.h, 12);
+      
+      // Spike shoes stomp detection with debug logging
+      // Position-based: player was above enemy in previous frame (coming from above)
+      const playerBottom = player.prevY + player.h;
+      const playerCurrentBottom = player.y + player.h;
+      const enemyTop = enemy.y;
+      const enemyHeadThreshold = enemy.y + Math.min(enemy.h, 12);
+      
+      // Check if player was above the enemy's head in the previous frame
+      const wasAboveEnemy = playerBottom <= enemyHeadThreshold;
+      // Also allow if currently coming down onto enemy (not grounded)
+      const comingFromAbove = wasAboveEnemy || (playerCurrentBottom <= enemyHeadThreshold + 4 && !player.grounded);
+      
+      const stomping = spikedShoes && comingFromAbove;
+      
       if (stomping) {
         enemy.health -= 2;
         spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, 2, `enemy-${enemy.id}`);
@@ -394,6 +421,7 @@ export function updateEnemies({
         }
         continue;
       }
+      
       hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2, enemy);
       if (!player.alive) return;
     }
@@ -506,6 +534,9 @@ function updateBossEnemy(enemy, dt, {
   // Check for health bar depletion and trigger invulnerability
   if (currentHealthBar < enemy.lastHealthBar) {
     enemy.invulnerabilityTimer = 10; // 10 second invulnerability
+    enemy.acidStacks = 0; // Reset acid stacks when shield activates
+    enemy.acidStackTimer = 0;
+    enemy.acidDuration = 0;
     onBossShieldActivated?.(enemy);
   }
   enemy.lastHealthBar = currentHealthBar;
@@ -644,6 +675,18 @@ function applyBossPoison(
   ACID_DEBUFF_DURATION,
   ACID_TICK_INTERVAL,
 ) {
+  // Don't apply poison if boss has shield buff active
+  const hasShieldBuff = enemy.invulnerabilityTimer > 0;
+  
+  if (hasShieldBuff) {
+    // Clear all acid-related values when shield is active
+    enemy.acidStacks = 0;
+    enemy.acidDuration = 0;
+    enemy.acidStackTimer = 0;
+    enemy.acidTickTimer = ACID_TICK_INTERVAL;
+    return;
+  }
+  
   const interval = ACID_TICK_INTERVAL || 0.5;
   const duration = ACID_DEBUFF_DURATION || 3;
   let touchingCount = 0;

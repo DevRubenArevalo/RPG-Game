@@ -3,15 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>From Nothing: A Slime's Journey</title>
-  <script type="module">
-    // Always fetch fresh version.js using timestamp (no cache)
-    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
-    const VERSION = versionModule.VERSION;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `./resources/css/custom.css?version=${VERSION}`;
-    document.head.appendChild(link);
-  </script>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="stylesheet" href="./resources/css/custom.css">
 </head>
 <body>
   <div class="game-wrap">
@@ -115,6 +110,10 @@
         <p>Swear fealty to the Slime King, then sprint into the neon mire. Melt foes, hoard boons, and carve your legend from ooze.</p>
         <div class="home-actions">
           <button id="homeStart" type="button">Start Run</button>
+          <div style="margin: 0.5em 0; display: flex; align-items: center; justify-content: center; gap: 0.5em;">
+            <input type="checkbox" id="skipTutorial" checked style="cursor: pointer;">
+            <label for="skipTutorial" style="cursor: pointer; font-size: 0.9em; color: #5dffba;">Skip Tutorial</label>
+          </div>
           <button id="homeOptions" type="button" data-info="options">Options</button>
           <button id="homeCredits" type="button" data-info="credits">Credits</button>
         </div>
@@ -193,21 +192,16 @@
     </div>
   </div>
   <script type="module">
-    // Always fetch fresh version.js using timestamp (no cache)
-    const versionModule = await import(`./resources/js/version.js?t=${Date.now()}`);
-    const VERSION = versionModule.VERSION;
+    // Load version and display it
+    import { VERSION } from './resources/js/version.js';
     
     // Display version on home screen
     const versionEl = document.getElementById('gameVersion');
     if (versionEl) {
-      versionEl.textContent = `${VERSION}`;
+      versionEl.textContent = `FromNothing-v${VERSION}`;
     }
-    
-    const script = document.createElement('script');
-    script.type = 'module';
-    script.src = `./resources/js/main.js?version=${VERSION}`;
-    document.body.appendChild(script);
   </script>
+  <script type="module" src="./resources/js/main.js"></script>
 
 </body>
 </html>

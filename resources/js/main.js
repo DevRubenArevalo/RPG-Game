@@ -450,11 +450,7 @@ function updateCamera() {
   const maxCameraY = Math.max(0, world.height - canvas.height);
   
   if (state.cinematicCameraX != null) {
-    const oldX = camera.x;
     camera.x = clamp(state.cinematicCameraX, 0, maxCameraX);
-    if (oldX !== camera.x) {
-      console.log('🎥 [CINEMATIC] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1));
-    }
   } else {
     // During cutscene mutation, camera stays locked at 0 (entire scene fits in viewport)
     // Only move camera in normal gameplay
@@ -467,12 +463,7 @@ function updateCamera() {
     } else {
       // Normal gameplay camera following
       const desired = player.x - viewRightMargin;
-      const oldX = camera.x;
       camera.x = clamp(desired, 0, maxCameraX);
-      
-      if (oldX !== camera.x) {
-        console.log('🎥 [GAMEPLAY] Camera changed:', oldX.toFixed(1), '→', camera.x.toFixed(1), '| Player.x:', player.x.toFixed(1));
-      }
     }
   }
   
@@ -1123,6 +1114,7 @@ function spawnBoss() {
   coins.length = 0;
   slimeChunks.length = 0;
   slimeGlobs.length = 0;
+  traps.length = 0;
   enemies.push(boss);
   player.nextShopAt = Infinity;
   statusEl.textContent = 'A colossal slime descends...';
@@ -1954,7 +1946,8 @@ function recordHighScore(distance) {
 }
 }
 
-function resetGame(toHome = false) {
+function resetGame(toHome = false, skipTutorial = true) {
+  console.log(`🔄 resetGame called (toHome: ${toHome}, skipTutorial: ${skipTutorial})`);
   shopController.resetUpgradeFlags();
   resetBossState();
   state.levelComplete = false;
@@ -2021,8 +2014,22 @@ function resetGame(toHome = false) {
     audio.stopLoop?.('music');
     audio.playHomeMusic?.();
     worldController.seedWorld();
+  } else if (skipTutorial) {
+    console.log('⏭️ Skipping tutorial - starting main game room');
+    state.homeScreenActive = false;
+    uiManager.setHomeScreenVisible(false);
+    
+    // Grant acid trail ability when skipping tutorial
+    state.upgrades.acid_trail = true;
+    console.log('✨ Acid trail enabled (tutorial skipped):', state.upgrades.acid_trail);
+    
+    // Update ability list to show new abilities
+    uiManager.updateAbilityList();
+    
+    roomController.initMainRoom(state, world);
+    audio.playLoop?.('music', audio.tracks.music[0], 0.4);
   } else {
-    console.log('🎮 Starting new game - NOT going to home screen');
+    console.log('🎮 Starting tutorial room');
     state.homeScreenActive = false;
     uiManager.setHomeScreenVisible(false);
     // Initialize tutorial room (opening cutscene)

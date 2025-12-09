@@ -58,6 +58,7 @@ export class UIManager {
     this.abilityListEl = document.getElementById('abilityList');
     this.homeInfoEl = document.getElementById('homeInfo');
     this.homeStartButton = document.getElementById('homeStart');
+    this.skipTutorialCheckbox = document.getElementById('skipTutorial');
     this.homeOptionsButton = document.getElementById('homeOptions');
     this.homeCreditsButton = document.getElementById('homeCredits');
     this.homeScreenEl = document.getElementById('homeScreen');
@@ -140,8 +141,10 @@ export class UIManager {
     this.updateHomeInfoContent('howto');
     if (!this.state.homeScreenActive) return;
     console.log('🎮 Home Start button clicked - calling onResetGame()');
+    const skipTutorial = this.skipTutorialCheckbox?.checked ?? true; // Default to skip if checkbox not found
+    console.log(`📍 Skip Tutorial: ${skipTutorial}`);
     this.audio.stopHomeMusic?.();
-    this.onResetGame();
+    this.onResetGame(false, skipTutorial); // Pass false for toHome, then skipTutorial
   }
 
   updateHomeInfoContent(section = 'howto') {
