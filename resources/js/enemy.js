@@ -760,13 +760,15 @@ function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
   const spawnLocations = [];
   
   // Base projectile template - calculates position from boss's CURRENT location when spawned
-  const createProjectile = (vx) => {
+  const createProjectile = (vx, heightMultiplier = 1) => {
     // Store a reference to calculate position when actually spawned
+    const waveHeight = height * heightMultiplier;
+    const waveY = enemy.groundY - waveHeight;
     return {
       x: 0, // Will be calculated in processProjectileSpawnQueue
-      y,
+      y: waveY,
       w: width,
-      h: height,
+      h: waveHeight,
       vx,
       vy: 0,
       damage: 4,
@@ -804,32 +806,32 @@ function spawnShockwaveProjectiles(enemy, enemyProjectiles) {
     
     // Level 3: 2 waves (immediate and +0.3s)
     if (difficulty === 3) {
-      // Wave 1: immediate
+      // Wave 1: immediate (100% height)
       enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
-        createProjectile(-speed),
-        createProjectile(speed),
+        createProjectile(-speed, 1.0),
+        createProjectile(speed, 1.0),
       ]});
-      // Wave 2: +0.3s
+      // Wave 2: +0.3s (65% height)
       enemy.projectileSpawnQueue.push({ delay: 0.3, projectiles: [
-        createProjectile(-speed),
-        createProjectile(speed),
+        createProjectile(-speed, 0.65),
+        createProjectile(speed, 0.65),
       ]});
     } else if (difficulty >= 4) {
       // Level 4: 3 waves (immediate, +0.2s, +0.4s)
-      // Wave 1: immediate
+      // Wave 1: immediate (100% height)
       enemy.projectileSpawnQueue.push({ delay: 0, projectiles: [
-        createProjectile(-speed),
-        createProjectile(speed),
+        createProjectile(-speed, 1.0),
+        createProjectile(speed, 1.0),
       ]});
-      // Wave 2: +0.2s
+      // Wave 2: +0.2s (65% height)
       enemy.projectileSpawnQueue.push({ delay: 0.2, projectiles: [
-        createProjectile(-speed),
-        createProjectile(speed),
+        createProjectile(-speed, 0.65),
+        createProjectile(speed, 0.65),
       ]});
-      // Wave 3: +0.4s
+      // Wave 3: +0.4s (35% height)
       enemy.projectileSpawnQueue.push({ delay: 0.4, projectiles: [
-        createProjectile(-speed),
-        createProjectile(speed),
+        createProjectile(-speed, 0.35),
+        createProjectile(speed, 0.35),
       ]});
     }
   }
