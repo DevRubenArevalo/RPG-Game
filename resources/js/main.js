@@ -1,8 +1,8 @@
-import { CONSTANTS } from './constants.js';
+import { CONSTANTS, ENEMY_CONFIG } from './config/index.js';
 import { AudioManager, AUDIO_TRACKS } from './audioManager.js';
 import { ShopManager, SHOP_INTERVAL } from './shopManager.js';
 import { GameState } from './gameState.js';
-import { ENEMY_CONFIG, createEnemy, createBossEnemy, updateEnemies } from './enemy.js';
+import { createEnemy, createBossEnemy, updateEnemies } from './enemy.js';
 import { Player, PLAYER_CONFIG, updatePlayerMovement } from './player.js';
 import { UPGRADES } from './upgrades.js';
 import { clamp, overlap, checkBossCollision } from './utils.js';
@@ -15,6 +15,10 @@ import { UIManager } from './uiManager.js';
 import { Renderer } from './renderer.js';
 import { Game } from './gameLoop.js';
 import { RoomController } from './roomController.js';
+import { eventBus } from './core/EventBus.js';
+
+// Enable event debugging during development (set to false in production)
+// eventBus.setDebug(true);
 
 const muteToggle = document.getElementById('muteToggle');
 const shopRefreshButton = document.getElementById('shopRefresh');
@@ -261,7 +265,7 @@ function update(dt) {
     allowFling: state.upgrades.slime_fling,
   });
   if (!state.shopActive && player.farthest >= player.nextShopAt) {
-    shopController.openShop();
+    eventBus.emit('shop:reached');
   }
   if (state.shopActive) {
     return;
@@ -287,9 +291,6 @@ function update(dt) {
       trailSegments,
       slimeGlobs,
       enemyProjectiles,
-      spawnSlimeChunks,
-      spawnCoins,
-      playEnemyDeathSound,
       hurtPlayer,
       playerDamagePerTick,
       spawnDamageNumber,
@@ -849,9 +850,8 @@ function updateChunks(dt) {
         applyMagnetism(chunk, dt);
 
         if (overlap(player, chunk)) {
+  eventBus.emit('player:collected:chunk', { chunk });
   slimeChunks.splice(i, 1);
-  playerManager.heal(1);
-  playChunkSound();
 }
 }
 }
@@ -896,10 +896,9 @@ function updateCoins(dt) {
         applyMagnetism(coin, dt);
 
         if (overlap(player, coin)) {
-  coins.splice(i, 1);
   const gain = Math.max(1, Math.round(coin.value * player.coinMultiplier));
-  player.coins += gain;
-  playCoinSound();
+  eventBus.emit('player:collected:coin', { coin, amount: gain });
+  coins.splice(i, 1);
 }
 }
 }
@@ -1062,26 +1061,7 @@ function updateDamageNumbers(dt) {
 }
 
 function hurtPlayer(amount, sourceX, source) {
-  if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
-  player.health -= amount;
-  spawnDamageNumber(player.x + player.w / 2, player.y, amount, 'player');
-  playHitSound();
-  player.invulnTimer = 1;
-  const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
-  player.vx = dir * player.maxSpeed * 0.5;
-  player.vy = -player.jumpSpeed * 0.6;
-  player.grounded = false;
-  player.squish = Math.min(0.35, player.squish + 0.22);
-  player.x += dir * player.w * 0.5;
-  clampPlayerHorizontal();
-  playerManager.applyScale();
-if (player.health <= 0) {
-  player.health = 0;
-  player.alive = false;
-  state.deathMessage = source?.deathMessage || 'Unknown cause';
-  recordHighScore(player.farthest);
-  gameOverManager.trigger();
-}
+  eventBus.emit('player:damaged', { amount, source, sourceX });
 }
 
 function clampPlayerHorizontal() {
@@ -1529,7 +1509,7 @@ function updateDefeatRain(def, dt) {
     if (overlap(player, chunk)) {
       player.maxHealth += 10;
       player.health = Math.min(player.health + 10, player.maxHealth);
-      playChunkSound();
+      eventBus.emit('player:collected:chunk', { chunk });
       if (chunk.rainItem) {
         def.rainItemsCollected++;
         console.log(`💚 Rain chunk collected! (${def.rainItemsCollected}/${def.rainItemsSpawned}) - def object:`, def);
@@ -1560,8 +1540,9 @@ function updateDefeatRain(def, dt) {
     
     // Check collision with player
     if (overlap(player, coin)) {
-      state.money += 5;
-      playCoinSound();
+      const gain = 5;
+      state.money += gain;
+      eventBus.emit('player:collected:coin', { coin, amount: gain });
       if (coin.rainItem) {
         def.rainItemsCollected++;
         console.log(`💛 Rain coin collected! (${def.rainItemsCollected}/${def.rainItemsSpawned}) - def object:`, def);
@@ -1619,53 +1600,11 @@ function finishDefeatCinematic() {
 }
 
 function handleBossShieldActivated(boss) {
-  // Drop 10 chunks when boss activates shield
-  spawnBossChunksOnHealthBarDepletion(boss, 10);
-  console.log('🛡️ Boss shield activated! Dropped 10 chunks');
+  eventBus.emit('boss:shield:activated', { boss });
 }
 
 function handleBossDefeat() {
-  if (state.levelComplete || state.defeatCinematic) return;
-  console.log('🔴 BOSS DEFEAT TRIGGERED');
-  audio.stopBossMusic?.();
-  state.paused = true;
-  
-  // Reset player inputs to prevent unintended movement after cinematic
-  keys.clear();
-  
-  // Reset player movement state to allow falling to floor
-  player.vx = 0;
-  player.vy = 0;
-  
-  const bossRef = state.boss;
-  const bossCenterX = (bossRef?.x ?? 0) + (bossRef?.w ?? 0) / 2;
-  const bossCenterY = (bossRef?.y ?? 0) + (bossRef?.h ?? 0) / 2;
-  console.log(`Captured boss center at defeat: (${bossCenterX}, ${bossCenterY})`);
-  state.defeatCinematic = {
-    phase: 'pause',
-    timer: 0,
-    pauseDuration: 0.4,
-    panDuration: 1.0,    // Pan to boss position
-    zoomDuration: 0.8,   // Then zoom in
-    morphDuration: 1.5,
-    swellDuration: 1.0,
-    explosionDuration: 0.3,
-    rainDuration: 15,
-    rainStartY: -100,
-    rainSpawnRate: 40 / 2, // 40 items over 2 seconds = 20 per second
-    rainSpawnTimer: 0,
-    explosionParticles: [],
-    rainItemsSpawned: 0,
-    rainItemsCollected: 0,
-    bossRef: bossRef,
-    bossStartX: bossRef?.x ?? 0,
-    bossStartY: bossRef?.y ?? 0,
-    bossCenterX: bossCenterX,
-    bossCenterY: bossCenterY,
-    playerStartX: player.x,
-    startCameraX: camera.x,  // Capture current camera position at defeat
-    startCameraY: camera.y,
-  };
+  eventBus.emit('boss:defeated', { boss: state.boss });
 }
 
 function resetBossState() {
@@ -2812,6 +2751,119 @@ function autoCloseDialogIfTooFar() {
     state.dialogIndex = 0;
   }
 }
+
+// ============================================================================
+// EVENT LISTENERS - Decoupled game event handlers
+// ============================================================================
+
+// Enemy killed event - handles all death-related effects
+eventBus.on('enemy:killed', ({ enemy, position }) => {
+  // Play death sound
+  playEnemyDeathSound();
+  
+  // Spawn visual effects and rewards
+  spawnSlimeChunks(enemy);
+  spawnCoins(enemy);
+});
+
+// Player damaged event - handles damage feedback
+eventBus.on('player:damaged', ({ amount, source, sourceX }) => {
+  if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
+  
+  player.health -= amount;
+  spawnDamageNumber(player.x + player.w / 2, player.y, amount, 'player');
+  playHitSound();
+  player.invulnTimer = 1;
+  
+  const dir = sourceX >= player.x + player.w / 2 ? -1 : 1;
+  player.vx = dir * player.maxSpeed * 0.5;
+  player.vy = -player.jumpSpeed * 0.6;
+  player.grounded = false;
+  player.squish = Math.min(0.35, player.squish + 0.22);
+  player.x += dir * player.w * 0.5;
+  clampPlayerHorizontal();
+  playerManager.applyScale();
+  
+  if (player.health <= 0) {
+    player.health = 0;
+    player.alive = false;
+    state.deathMessage = source?.deathMessage || 'Unknown cause';
+    recordHighScore(player.farthest);
+    gameOverManager.trigger();
+  }
+});
+
+// Player collected chunk event
+eventBus.on('player:collected:chunk', ({ chunk }) => {
+  playerManager.heal(1);
+  playChunkSound();
+});
+
+// Player collected coin event
+eventBus.on('player:collected:coin', ({ coin, amount }) => {
+  player.coins += amount;
+  playCoinSound();
+});
+
+// Shop reached event
+eventBus.on('shop:reached', () => {
+  shopController.openShop();
+});
+
+// Boss defeated event
+eventBus.on('boss:defeated', ({ boss }) => {
+  if (state.levelComplete || state.defeatCinematic) return;
+  console.log('🔴 BOSS DEFEAT TRIGGERED');
+  audio.stopBossMusic?.();
+  state.paused = true;
+  
+  // Reset player inputs to prevent unintended movement after cinematic
+  keys.clear();
+  
+  // Reset player movement state to allow falling to floor
+  player.vx = 0;
+  player.vy = 0;
+  
+  const bossRef = boss;
+  const bossCenterX = (bossRef?.x ?? 0) + (bossRef?.w ?? 0) / 2;
+  const bossCenterY = (bossRef?.y ?? 0) + (bossRef?.h ?? 0) / 2;
+  console.log(`Captured boss center at defeat: (${bossCenterX}, ${bossCenterY})`);
+  state.defeatCinematic = {
+    phase: 'pause',
+    timer: 0,
+    pauseDuration: 0.4,
+    panDuration: 1.0,
+    zoomDuration: 0.8,
+    morphDuration: 1.5,
+    swellDuration: 1.0,
+    explosionDuration: 0.3,
+    rainDuration: 15,
+    rainStartY: -100,
+    rainSpawnRate: 40 / 2,
+    rainSpawnTimer: 0,
+    explosionParticles: [],
+    rainItemsSpawned: 0,
+    rainItemsCollected: 0,
+    bossRef: bossRef,
+    bossStartX: bossRef?.x ?? 0,
+    bossStartY: bossRef?.y ?? 0,
+    bossCenterX: bossCenterX,
+    bossCenterY: bossCenterY,
+    playerStartX: player.x,
+    startCameraX: camera.x,
+    startCameraY: camera.y,
+  };
+});
+
+// Boss shield activated event
+eventBus.on('boss:shield:activated', ({ boss }) => {
+  spawnBossChunksOnHealthBarDepletion(boss, 10);
+  console.log('🛡️ Boss shield activated! Dropped 10 chunks');
+});
+
+// ============================================================================
+// GAME INITIALIZATION
+// ============================================================================
 
 gameInstance = new Game(update, renderer, state);
 

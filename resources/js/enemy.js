@@ -1,32 +1,7 @@
 import { Projectile } from './projectile.js';
 import { clamp, overlap } from './utils.js';
-
-export const ENEMY_CONFIG = {
-  width: 44,
-  projectile: {
-    interval: 3,
-    modeSwitch: 3,
-    speed: 320,
-  },
-  tiers: [
-    { tier: 'weak', health: 10, damage: 3, color: '#5dff5d', deathMessage: 'Slimed by a weak slime' },
-    { tier: 'medium', health: 20, damage: 6, color: '#ffd25d', deathMessage: 'Crushed by a medium slime' },
-    { tier: 'hard', health: 30, damage: 9, color: '#ff5d6c', deathMessage: 'Destroyed by a hard slime' },
-  ],
-};
-
-const BOSS_CONFIG = {
-  sizeRatio: 0.6,
-  health: 160,
-  windup: 2.4,
-  jumpDuration: 1.8,
-  recoverDuration: 1.2,
-  jumpDistanceRatio: 0.5,
-  jumpHeightRatio: 0.7,
-  contactDamage: 5,
-  regenRate: 1,
-  poisonInterval: 2,
-};
+import { ENEMY_CONFIG, BOSS_CONFIG } from './config/index.js';
+import { eventBus } from './core/EventBus.js';
 
 export class Enemy {
   constructor(props) {
@@ -156,9 +131,6 @@ export function updateEnemies({
   trailSegments,
   slimeGlobs,
   enemyProjectiles,
-  spawnSlimeChunks,
-  spawnCoins,
-  playEnemyDeathSound,
   hurtPlayer,
   playerDamagePerTick,
   spawnDamageNumber,
@@ -366,9 +338,12 @@ export function updateEnemies({
         // Keep boss in array during defeat cinematic so it stays accessible
         continue;
       } else {
-        playEnemyDeathSound();
-        spawnSlimeChunks(enemy);
-        spawnCoins(enemy);
+        // Emit enemy killed event
+        eventBus.emit('enemy:killed', { 
+          enemy, 
+          position: { x: enemy.x + enemy.w / 2, y: enemy.y },
+          enemyProjectiles 
+        });
       }
       // Remove all projectiles spawned by this enemy
       for (let j = enemyProjectiles.length - 1; j >= 0; j--) {
@@ -407,9 +382,12 @@ export function updateEnemies({
         player.vy = -player.jumpSpeed * 0.5;
         player.grounded = false;
         if (enemy.health <= 0) {
-          playEnemyDeathSound();
-          spawnSlimeChunks(enemy);
-          spawnCoins(enemy);
+          // Emit enemy killed event
+          eventBus.emit('enemy:killed', { 
+            enemy, 
+            position: { x: enemy.x + enemy.w / 2, y: enemy.y },
+            enemyProjectiles 
+          });
           // Remove all projectiles spawned by this enemy
           for (let j = enemyProjectiles.length - 1; j >= 0; j--) {
             if (enemyProjectiles[j].enemySource === enemy) {

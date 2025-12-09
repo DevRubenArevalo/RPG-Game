@@ -1,16 +1,6 @@
-export const PLAYER_CONFIG = {
-  baseWidth: 56,
-  baseHeight: 48,
-  duckHeight: 28,
-  maxSpeed: 420,
-  accel: 2800,
-  jumpSpeed: 820,
-  jumpBoostThreshold: 30,
-  jumpBoostMultiplier: 1.5,
-  maxHealth: 30,
-  startingHealth: 1,
-  invulnerability: 1,
-};
+import { PLAYER_CONFIG } from './config/index.js';
+
+export { PLAYER_CONFIG };
 
 export class Player {
   constructor(config = PLAYER_CONFIG, world, shopInterval) {

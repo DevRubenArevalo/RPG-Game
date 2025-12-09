@@ -1,6 +1,6 @@
 import { SHOP_INTERVAL } from './shopManager.js';
 import { UPGRADES } from './upgrades.js';
-import { CONSTANTS } from './constants.js';
+import { CONSTANTS } from './config/index.js';
 
 const SHOP_REFRESH_COST = 100;
 const PLATFORM_UNIT = CONSTANTS.level.platformUnit;
