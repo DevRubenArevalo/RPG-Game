@@ -254,7 +254,7 @@ function attemptSlimeFling({
     const fallbackDir = sharpAirFlip ? -directionInput : 1;
     const direction = player.flingDirection || Math.sign(prevVX) || fallbackDir;
     spawnSlimeGlob(direction, charge);
-    setSlimeFlingCooldown(6);
+    setSlimeFlingCooldown(3);
     player.flingCharge = 0;
   }
 }
