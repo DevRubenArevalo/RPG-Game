@@ -386,9 +386,21 @@ export function updateEnemies({
         if (!player.alive) return;
         continue;
       }
-      const stomping = spikedShoes &&
-        player.vy > 0 &&
-        player.prevY + player.h <= enemy.y + Math.min(enemy.h, 12);
+      
+      // Spike shoes stomp detection with debug logging
+      // Position-based: player was above enemy in previous frame (coming from above)
+      const playerBottom = player.prevY + player.h;
+      const playerCurrentBottom = player.y + player.h;
+      const enemyTop = enemy.y;
+      const enemyHeadThreshold = enemy.y + Math.min(enemy.h, 12);
+      
+      // Check if player was above the enemy's head in the previous frame
+      const wasAboveEnemy = playerBottom <= enemyHeadThreshold;
+      // Also allow if currently coming down onto enemy (not grounded)
+      const comingFromAbove = wasAboveEnemy || (playerCurrentBottom <= enemyHeadThreshold + 4 && !player.grounded);
+      
+      const stomping = spikedShoes && comingFromAbove;
+      
       if (stomping) {
         enemy.health -= 2;
         spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, 2, `enemy-${enemy.id}`);
@@ -409,6 +421,7 @@ export function updateEnemies({
         }
         continue;
       }
+      
       hurtPlayer(enemy.damage ?? 1, enemy.x + enemy.w / 2, enemy);
       if (!player.alive) return;
     }

@@ -2022,6 +2022,9 @@ function resetGame(toHome = false, skipTutorial = true) {
     state.upgrades.acid_trail = true;
     console.log('✨ Acid trail enabled (tutorial skipped):', state.upgrades.acid_trail);
     
+    // Update ability list to show new abilities
+    uiManager.updateAbilityList();
+    
     roomController.initMainRoom(state, world);
     audio.playLoop?.('music', audio.tracks.music[0], 0.4);
   } else {
