@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-12-10
+
+### Added
+- **Unit Testing Infrastructure**: Complete Jest setup with ES module support
+  - `package.json` with test scripts: `npm test`, `npm run test:watch`, `npm run test:coverage`
+  - `jest.config.js` configured for ES modules with coverage reporting
+  - `__tests__/` directory structure for organized test files
+  - `__tests__/README.md` with testing documentation and examples
+
+### Tests
+- **Utils Tests** (`__tests__/utils.test.js`): 60+ test cases covering all utility functions
+  - `clamp`: 5 test suites with edge cases (boundary values, negative ranges, swapped min/max)
+  - `randomRange`: 4 test suites with range validation and edge cases
+  - `overlap`: 7 test suites for AABB collision (overlapping, touching, contained, partial overlaps)
+  - `snapshot`: 5 test suites for object property copying
+  - `circleRectCollision`: 6 test suites for circle-rectangle collision detection
+  - `checkBossCollision`: 7 test suites for boss morph mode collision (square/circle modes, blend transitions)
+
+- **GameStateManager Tests** (`__tests__/gameStateManager.test.js`): 45+ test cases
+  - Pause Management: `pause()`, `unpause()`, `togglePause()`, edge cases
+  - Shop Management: `openShop()`, `closeShop()`, state validation
+  - Boss Fight Management: `startBossFight()`, `endBossFight()`, shop auto-close
+  - Game Over Management: `gameOver()`, `resetGameOver()`, shop auto-close
+  - Level Complete Management: `completeLevel()`, `resetLevelComplete()`
+  - Composite Queries: `isGameplayBlocked()`, `getStateSummary()`, `resetAll()`
+  - EventBus Integration: Mocked events, correct payloads, event emission verification
+
+### Documentation
+- **ARCHITECTURE.md Updates**: Added comprehensive Testing section
+  - How to run tests with examples
+  - Test structure and organization
+  - Writing tests with code examples (pure functions and mocked classes)
+  - Testing best practices (6 guidelines)
+  - What to test (priority breakdown)
+  - Coverage goals (100% utils, 80% managers, 70% systems, 60% overall)
+  - Mock examples for EventBus and dependencies
+
+### Technical Details
+- **Test Coverage**: 100+ test cases covering pure functions and state management
+- **Mocking Strategy**: Jest mocks for EventBus, state objects, and dependencies
+- **ES Module Support**: Node.js experimental VM modules flag for Jest
+- **Files Created**: 3 new files (package.json, jest.config.js, utils.test.js, gameStateManager.test.js, __tests__/README.md)
+- **Risk**: None (pure addition, no changes to existing code)
+- **Time**: ~2-3 hours (as estimated for initial setup)
+
 ## [0.7.0] - 2025-12-10
 
 ### Added

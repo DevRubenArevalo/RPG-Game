@@ -835,6 +835,106 @@ import { clamp } from '../utils/utils.js';
 
 ---
 
+## 🧪 Testing
+
+### Overview
+The project uses [Jest](https://jestjs.io/) for unit testing with ES module support.
+
+### Running Tests
+```bash
+# Install dependencies (first time only)
+npm install
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run with coverage report
+npm run test:coverage
+```
+
+### Test Structure
+Tests are in `__tests__/` directory:
+- `utils.test.js` - Pure utility functions
+- `gameStateManager.test.js` - State management
+- More tests coming soon...
+
+### Writing Tests
+**Test Pure Functions First:**
+```javascript
+import { describe, it, expect } from '@jest/globals';
+import { clamp } from '../resources/js/utils/utils.js';
+
+describe('clamp', () => {
+  it('should clamp value between min and max', () => {
+    expect(clamp(5, 0, 10)).toBe(5);
+    expect(clamp(-5, 0, 10)).toBe(0);
+    expect(clamp(15, 0, 10)).toBe(10);
+  });
+});
+```
+
+**Test Classes with Mocks:**
+```javascript
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { GameStateManager } from '../resources/js/managers/gameStateManager.js';
+
+describe('GameStateManager', () => {
+  let stateManager;
+  let mockEventBus;
+
+  beforeEach(() => {
+    mockEventBus = { emit: jest.fn() };
+    stateManager = new GameStateManager({ 
+      state: { paused: false }, 
+      eventBus: mockEventBus 
+    });
+  });
+
+  it('should pause and emit event', () => {
+    stateManager.pause();
+    expect(mockEventBus.emit).toHaveBeenCalledWith('game:paused', { reason: 'manual' });
+  });
+});
+```
+
+### Testing Best Practices
+1. **Test pure functions first** - Easiest to test, highest value
+2. **Use mocks for dependencies** - EventBus, DOM elements, audio
+3. **Test edge cases** - Boundary values, null, undefined, empty arrays
+4. **Test state transitions** - Before/after states, event emissions
+5. **Keep tests focused** - One concept per test
+6. **Use descriptive names** - Test name should explain what's tested
+
+### What to Test
+**High Priority (Pure Functions):**
+- ✅ Utils: `clamp`, `randomRange`, `overlap`, `snapshot`
+- ✅ Collision: `circleRectCollision`, `checkBossCollision`
+- ✅ GameStateManager: All state transition methods
+
+**Medium Priority (Classes with Dependencies):**
+- 🚧 PlayerManager: Apply upgrades, scale calculations
+- 🚧 ShopController: Purchase logic, option selection
+- 🚧 WorldController: Generation algorithms
+- 🚧 AudioManager: Playback logic (with mocked Audio)
+
+**Lower Priority (Complex Integration):**
+- 🔜 Renderer: Visual output (hard to test)
+- 🔜 Game loop: Integration testing
+- 🔜 Input handling: Event simulation
+
+### Coverage Goals
+- **Utils:** 100% (pure functions)
+- **Managers:** 80%+ (state management)
+- **Systems:** 70%+ (controllers)
+- **Overall:** 60%+ target
+
+View coverage reports: `coverage/index.html` after running `npm run test:coverage`
+
+---
+
 ## 📚 Quick Reference
 
 ### File Type → Folder Mapping
@@ -864,6 +964,6 @@ import { clamp } from '../utils/utils.js';
 
 ---
 
-**Version:** 0.3.3  
+**Version:** 0.8.0  
 **Last Updated:** December 2025  
 **Maintained by:** Development Team

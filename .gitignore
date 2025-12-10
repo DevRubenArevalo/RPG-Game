@@ -1,2 +1,18 @@
 resources/unused-audio
 .env
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
