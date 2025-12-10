@@ -40,7 +40,7 @@ state.homeScreenActive = true;
 state.gameOverTears = [];
 state.gameOverTearTimer = 0;
 state.gameOverNextTearSide = 'left';
-const audio = new AudioManager(AUDIO_TRACKS, muteToggle, eventBus);
+const audio = new AudioManager({ paths: AUDIO_TRACKS, muteToggle, eventBus });
 let gameInstance;
 const shopManager = new ShopManager();
 const roomController = new RoomController();
@@ -1926,7 +1926,7 @@ function resetGame(toHome = false, skipTutorial = true) {
   world.width = canvas.width * 1.5;
   camera.x = 0;
   const newCoins = toHome ? 0 : savedCoins;
-  const freshPlayer = new Player(PLAYER_CONFIG, world, SHOP_INTERVAL);
+  const freshPlayer = new Player({ playerConfig: PLAYER_CONFIG, world, shopInterval: SHOP_INTERVAL });
   Object.keys(player).forEach((key) => {
     delete player[key];
   });

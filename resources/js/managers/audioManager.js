@@ -19,11 +19,12 @@ export const AUDIO_TRACKS = {
  */
 export class AudioManager {
   /**
-   * @param {Object<string, string>} paths - Audio file paths
-   * @param {Function} muteToggle - Mute toggle function
-   * @param {EventBus} eventBus - Event bus for decoupled communication
+   * @param {Object} config - Audio manager configuration
+   * @param {Object<string, string>} [config.paths] - Audio file paths
+   * @param {HTMLElement} [config.muteToggle] - Mute toggle button element
+   * @param {EventBus} [config.eventBus] - Event bus for decoupled communication
    */
-  constructor(paths = AUDIO_TRACKS, muteToggle, eventBus) {
+  constructor({ paths = AUDIO_TRACKS, muteToggle = null, eventBus = null } = {}) {
     this.music = this.create(paths.music, { loop: true, volume: 0.2 });
     this.home = this.create(paths.home, { loop: true, volume: 0.2 });
     this.bossMusic = this.create(paths.bossMusic, { loop: true, volume: 0.25 });

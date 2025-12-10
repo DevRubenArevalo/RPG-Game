@@ -9,14 +9,15 @@ export { PLAYER_CONFIG };
  */
 export class Player {
   /**
-   * @param {PlayerConfig} config - Player configuration
-   * @param {Object} world - World physics configuration
-   * @param {number} shopInterval - Distance between shops
+   * @param {Object} config - Player configuration
+   * @param {Object} [config.playerConfig] - Player stats configuration
+   * @param {Object} config.world - World physics configuration
+   * @param {number} config.shopInterval - Distance between shops
    */
-  constructor(config = PLAYER_CONFIG, world, shopInterval) {
-    this.config = config;
-    this.baseW = config.baseWidth;
-    this.baseH = config.baseHeight;
+  constructor({ playerConfig = PLAYER_CONFIG, world, shopInterval }) {
+    this.config = playerConfig;
+    this.baseW = playerConfig.baseWidth;
+    this.baseH = playerConfig.baseHeight;
     this.color = '#5dffba';
     this.shopInterval = shopInterval;
     this.reset(world);

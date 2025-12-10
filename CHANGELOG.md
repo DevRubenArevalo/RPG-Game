@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-10
+
+### Changed
+- **Improved Dependency Injection**: Standardized all major classes to use configuration object pattern
+  - **AudioManager**: Converted from positional parameters to config object
+    - Old: `new AudioManager(paths, muteToggle, eventBus)`
+    - New: `new AudioManager({ paths, muteToggle, eventBus })`
+    - All parameters now optional with defaults
+    - Easier to test without real DOM elements
+  - **Player**: Converted from positional parameters to config object
+    - Old: `new Player(config, world, shopInterval)`
+    - New: `new Player({ playerConfig, world, shopInterval })`
+    - Consistent with other entity constructors
+    - Better parameter naming clarity
+
+### Documentation
+- **ARCHITECTURE.md Updates**: Added comprehensive Dependency Injection section
+  - Pattern explanation with examples
+  - Benefits: testability, flexibility, maintainability
+  - Config object best practices
+  - Testing examples showing mocked dependencies
+  - Before/after comparisons for clarity
+  - Complete examples for all major classes (AudioManager, Player, Renderer, ShopController, WorldController)
+  - Best practices: destructuring with defaults, minimal dependencies, EventBus usage
+
+### Technical Details
+- Updated 3 instantiation sites (main.js, gameState.js)
+- All major classes now use config object pattern consistently
+- Easier to add optional dependencies without breaking changes
+- Forward-compatible - new parameters can be added without breaking existing code
+- Improved testability - easy to inject mocks for unit testing
+
 ## [0.5.0] - 2025-12-09
 
 ### Added

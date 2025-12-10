@@ -307,6 +307,260 @@ export function utilityFunction(param) {
 
 ---
 
+## 💉 Dependency Injection Pattern
+
+### Overview
+All major classes use **constructor-based dependency injection** via configuration objects. This makes the code:
+- **Testable** - Easy to mock dependencies in unit tests
+- **Flexible** - Easy to swap implementations without changing code
+- **Explicit** - Dependencies are clear from constructor signature
+- **Maintainable** - Dependencies can be changed without breaking existing code
+
+### Configuration Object Pattern
+All classes accept a single configuration object with named properties:
+
+```javascript
+// ✅ GOOD - Config object with defaults
+export class AudioManager {
+  constructor({ paths = AUDIO_TRACKS, muteToggle = null, eventBus = null } = {}) {
+    this.paths = paths;
+    this.muteToggle = muteToggle;
+    this.eventBus = eventBus;
+  }
+}
+
+// ❌ BAD - Positional arguments
+export class AudioManager {
+  constructor(paths, muteToggle, eventBus) { /* ... */ }
+}
+```
+
+### Benefits of Config Objects
+
+**1. Named Parameters**
+```javascript
+// Clear what each parameter does
+const audio = new AudioManager({
+  paths: AUDIO_TRACKS,
+  muteToggle: document.getElementById('muteToggle'),
+  eventBus
+});
+
+// vs. positional args - unclear without looking at docs
+const audio = new AudioManager(AUDIO_TRACKS, muteToggle, eventBus);
+```
+
+**2. Optional Dependencies**
+```javascript
+// Optional dependencies with defaults
+constructor({ paths = AUDIO_TRACKS, muteToggle = null, eventBus = null } = {}) {
+  // muteToggle and eventBus are optional
+  if (this.muteToggle) {
+    this.muteToggle.addEventListener('click', this.toggleMute);
+  }
+}
+```
+
+**3. Easy Testing**
+```javascript
+// Test without real DOM elements
+const mockEventBus = { on: jest.fn(), emit: jest.fn() };
+const audio = new AudioManager({ 
+  paths: testPaths,
+  eventBus: mockEventBus 
+});
+```
+
+**4. Forward Compatibility**
+```javascript
+// Adding new dependencies doesn't break existing code
+constructor({ 
+  paths = AUDIO_TRACKS, 
+  muteToggle = null, 
+  eventBus = null,
+  volumeSlider = null  // NEW - doesn't break existing instantiations
+} = {}) { /* ... */ }
+```
+
+### Dependency Injection Examples
+
+#### AudioManager
+```javascript
+// Injects: audio file paths, DOM element, event bus
+const audio = new AudioManager({
+  paths: AUDIO_TRACKS,
+  muteToggle: document.getElementById('muteToggle'),
+  eventBus
+});
+```
+
+#### Player
+```javascript
+// Injects: player config, world physics, shop settings
+const player = new Player({
+  playerConfig: PLAYER_CONFIG,
+  world,
+  shopInterval: SHOP_INTERVAL
+});
+```
+
+#### Renderer
+```javascript
+// Injects: game state, game over manager, rendering config
+const renderer = new Renderer({
+  state,
+  gameOverManager,
+  markerSpacing: MARKER_SPACING,
+  acidDebuffDuration: ACID_DEBUFF_DURATION,
+  damageLifetime: 0.8
+});
+```
+
+#### ShopController
+```javascript
+// Injects: state, player, managers, DOM elements
+const shopController = new ShopController({
+  state,
+  player,
+  playerManager,
+  shopManager,
+  shopRefreshButton: document.getElementById('shopRefresh'),
+  shopSkipButton: document.getElementById('shopSkip')
+});
+```
+
+#### WorldController
+```javascript
+// Injects: state, player, config, factory functions, callbacks
+const worldController = new WorldController({
+  state,
+  player,
+  enemyConfig: ENEMY_CONFIG,
+  createEnemy,
+  platformUnit: PLATFORM_UNIT,
+  acidTickInterval: ACID_TICK_INTERVAL,
+  playerDamagePerTick,
+  playCorrosionSound
+});
+```
+
+### Best Practices
+
+**1. Use Destructuring with Defaults**
+```javascript
+constructor({ 
+  requiredParam,           // Required - no default
+  optionalParam = 'default', // Optional with default
+  anotherOptional = null   // Optional, nullable
+} = {}) {  // Default to empty object so constructor() works
+  this.requiredParam = requiredParam;
+  this.optionalParam = optionalParam;
+}
+```
+
+**2. Document All Parameters**
+```javascript
+/**
+ * @param {Object} config - Configuration object
+ * @param {GameState} config.state - Game state reference
+ * @param {Player} config.player - Player instance  
+ * @param {EventBus} [config.eventBus] - Optional event bus
+ */
+constructor({ state, player, eventBus = null }) { /* ... */ }
+```
+
+**3. Keep Dependencies Minimal**
+```javascript
+// ✅ GOOD - Only depends on what it needs
+constructor({ canvas, ctx, state }) {
+  this.canvas = canvas;
+  this.ctx = ctx;
+  this.state = state;
+}
+
+// ❌ BAD - Depends on entire game instance
+constructor(game) {
+  this.game = game;
+  // Now coupled to entire game object
+}
+```
+
+**4. Inject Functions, Not Implementations**
+```javascript
+// ✅ GOOD - Inject callback function
+constructor({ onGameOver }) {
+  this.onGameOver = onGameOver;
+}
+
+// Later: this.onGameOver();
+
+// ❌ BAD - Import and directly use
+import { triggerGameOver } from './gameOver.js';
+// Now tightly coupled to this implementation
+```
+
+**5. Use EventBus for Cross-System Communication**
+```javascript
+// ✅ GOOD - Emit event for decoupled communication
+constructor({ eventBus }) {
+  this.eventBus = eventBus;
+}
+
+onEnemyDeath() {
+  this.eventBus.emit('enemy:killed', { enemy: this });
+}
+
+// ❌ BAD - Direct method calls across systems
+constructor({ audioManager, uiManager }) {
+  this.audioManager = audioManager;
+  this.uiManager = uiManager;
+}
+
+onEnemyDeath() {
+  this.audioManager.playSound('death');
+  this.uiManager.showKillNotification();
+  // Tightly coupled to these implementations
+}
+```
+
+### Testing Benefits
+
+With proper DI, you can easily test in isolation:
+
+```javascript
+// Example: Testing ShopController
+describe('ShopController', () => {
+  it('should purchase upgrade when player has enough coins', () => {
+    // Mock dependencies
+    const mockPlayer = { coins: 100, health: 10 };
+    const mockState = { upgrades: {}, shopActive: true };
+    const mockPlayerManager = { applyScale: jest.fn() };
+    const mockShopManager = { 
+      updateMessage: jest.fn(),
+      close: jest.fn() 
+    };
+    
+    // Inject mocks
+    const shop = new ShopController({
+      state: mockState,
+      player: mockPlayer,
+      playerManager: mockPlayerManager,
+      shopManager: mockShopManager,
+      shopRefreshButton: null,
+      shopSkipButton: null
+    });
+    
+    // Test in isolation - no real DOM, no real game state
+    shop.handleSelection('test_upgrade');
+    
+    expect(mockPlayer.coins).toBe(50); // Spent 50 coins
+    expect(mockShopManager.updateMessage).toHaveBeenCalled();
+  });
+});
+```
+
+---
+
 ## 🔌 Event-Driven Architecture
 
 ### Core Events

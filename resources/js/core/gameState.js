@@ -19,7 +19,7 @@ export class GameState {
       width: this.canvas.width * constants.world.widthMultiplier,
     };
     this.camera = { x: 0 };
-    this.player = new Player(PLAYER_CONFIG, this.world, SHOP_INTERVAL);
+    this.player = new Player({ playerConfig: PLAYER_CONFIG, world: this.world, shopInterval: SHOP_INTERVAL });
     this.room = new Room();
     this.platforms = this.room.platforms;
     this.enemies = [];
