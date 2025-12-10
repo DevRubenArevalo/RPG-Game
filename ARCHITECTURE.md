@@ -208,6 +208,7 @@ export class SystemController {
 - `shopManager.js` - Shop UI and interaction
 - `uiManager.js` - HUD, menus, information displays
 - `gameOverManager.js` - Game over state and high scores
+- `gameStateManager.js` - Centralized game state management (pause, shop, boss fights, etc.)
 
 **Manager Pattern:**
 ```javascript
@@ -225,6 +226,98 @@ export class FeatureManager {
 
   setupEventListeners() {
     eventBus.on('relevant:event', this.handleEvent.bind(this));
+  }
+}
+```
+
+**GameStateManager - Centralized State Management:**
+
+The `GameStateManager` is a special manager that provides a single interface for all major game state transitions. Instead of directly manipulating `state.paused`, `state.shopActive`, etc., use GameStateManager methods:
+
+```javascript
+// ✅ GOOD - Use GameStateManager methods
+state.stateManager.pause({ reason: 'user_pause' });
+state.stateManager.openShop({ shopOptions: selections });
+state.stateManager.startBossFight({ boss });
+
+// ❌ BAD - Direct state manipulation
+state.paused = true;
+state.shopActive = true;
+state.bossFightActive = true;
+```
+
+**Benefits:**
+1. **Single Source of Truth** - One place to look for all state changes
+2. **Event Notifications** - Automatically emits events when state changes
+3. **Validation** - Prevents invalid state transitions
+4. **Testability** - Easy to mock for unit tests
+5. **Debugging** - All state changes go through documented methods
+
+**Available Methods:**
+
+*Pause Management:*
+- `pause(options)` - Pause the game
+- `unpause()` - Unpause the game
+- `togglePause(force)` - Toggle pause state
+- `isPaused()` - Check if paused
+
+*Shop Management:*
+- `openShop(options)` - Open shop interface
+- `closeShop(options)` - Close shop interface
+- `isShopActive()` - Check if shop is open
+
+*Boss Fight Management:*
+- `startBossFight(options)` - Start boss fight
+- `endBossFight(options)` - End boss fight
+- `isBossFightActive()` - Check if boss fight active
+
+*Game Over Management:*
+- `gameOver(options)` - Trigger game over
+- `resetGameOver()` - Reset from game over
+- `isGameOver()` - Check if game over
+
+*Level Complete Management:*
+- `completeLevel()` - Mark level complete
+- `resetLevelComplete()` - Reset level complete
+- `isLevelComplete()` - Check if level complete
+
+*Composite Queries:*
+- `isGameplayBlocked()` - Check if any blocking state active
+- `getStateSummary()` - Get complete state snapshot
+- `resetAll()` - Reset all managed state
+
+**Events Emitted:**
+- `game:paused` - Game paused (with reason)
+- `game:unpaused` - Game unpaused
+- `shop:opened` - Shop opened (with options)
+- `shop:closed` - Shop closed (with message)
+- `boss:fight:started` - Boss fight started (with boss)
+- `boss:fight:ended` - Boss fight ended (with defeated flag)
+- `game:over` - Game over triggered (with death message)
+- `game:over:reset` - Reset from game over
+- `level:complete` - Level completed
+- `level:complete:reset` - Reset level complete
+- `game:state:reset` - All state reset
+
+**Usage Example:**
+```javascript
+// In a controller or manager
+class SomeController {
+  constructor({ state }) {
+    this.state = state;
+    
+    // Listen to state change events
+    eventBus.on('game:paused', ({ reason }) => {
+      console.log(`Game paused: ${reason}`);
+    });
+  }
+  
+  someMethod() {
+    // Use GameStateManager methods
+    if (!this.state.stateManager.isGameplayBlocked()) {
+      // Safe to continue gameplay
+      this.state.stateManager.pause({ reason: 'cutscene' });
+    }
   }
 }
 ```

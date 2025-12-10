@@ -385,16 +385,11 @@ const renderer = new Renderer({
 });
 
 function togglePause(force) {
-  if (state.gameOver || state.shopActive || state.levelComplete) return;
-  const next = typeof force === 'boolean' ? force : !state.paused;
-  if (state.paused === next) return;
-  state.paused = next;
+  state.stateManager.togglePause(force);
   uiManager.setPauseOverlay(state.paused);
   if (state.paused) {
     keys.clear();
     statusEl.textContent = 'Paused - press Esc to continue';
-  } else {
-    state.platformPauseActive = false;
   }
 }
 
@@ -1088,10 +1083,7 @@ function checkBossSpawn() {
 
 function spawnBoss() {
   const boss = createBossEnemy({ canvas, world, player });
-  state.boss = boss;
-  state.bossFightActive = true;
-  state.bossDefeated = false;
-  state.shopActive = false;
+  state.stateManager.startBossFight({ boss });
   shopManager.close();
   enemies.length = 0;
   enemyProjectiles.length = 0;
@@ -1594,9 +1586,9 @@ function finishDefeatCinematic() {
   state.cameraZoom = 1;
   state.boss = null;
   state.bossDefeated = true;
-  state.bossFightActive = false;
-  eventBus.emit('level:complete');
-  state.paused = false;
+  state.stateManager.endBossFight({ defeated: true });
+  state.stateManager.completeLevel();
+  state.stateManager.unpause();
   audio.startMusic?.();
 }
 
@@ -1610,7 +1602,7 @@ function handleBossDefeat() {
 
 function resetBossState() {
   state.boss = null;
-  state.bossFightActive = false;
+  state.stateManager.endBossFight({ defeated: false });
   state.bossDefeated = false;
   state.cinematic = null;
   state.cinematicCameraX = null;
@@ -1890,19 +1882,18 @@ function resetGame(toHome = false, skipTutorial = true) {
   console.log(`🔄 resetGame called (toHome: ${toHome}, skipTutorial: ${skipTutorial})`);
   shopController.resetUpgradeFlags();
   resetBossState();
-  state.levelComplete = false;
-  state.levelCompleteTimer = 0;
+  state.stateManager.resetLevelComplete();
   uiManager.setLevelCompleteVisible(false);
-  state.paused = false;
+  state.stateManager.unpause();
   const savedCoins = player.coins;
   const baseMaxHealth = PLAYER_CONFIG.maxHealth;
   const baseCoinMultiplier = 1;
-  state.gameOver = false;
+  state.stateManager.resetGameOver();
   gameOverManager.resetState();
   uiManager.setGameOverControlsVisible(false);
   stopGameOverSound();
   statusEl.textContent = '';
-  state.shopActive = false;
+  state.stateManager.closeShop();
   shopManager.close();
   state.slimeFlingCooldown = 0;
   state.slimeFlingCooldownMax = 0;
@@ -2844,7 +2835,7 @@ eventBus.on('boss:defeated', ({ boss }) => {
   if (state.levelComplete || state.defeatCinematic) return;
   console.log('🔴 BOSS DEFEAT TRIGGERED');
   audio.stopBossMusic?.();
-  state.paused = true;
+  state.stateManager.pause({ reason: 'boss_defeat_cinematic' });
   
   // Reset player inputs to prevent unintended movement after cinematic
   keys.clear();

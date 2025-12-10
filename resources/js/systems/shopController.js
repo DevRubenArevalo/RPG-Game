@@ -69,18 +69,15 @@ export class ShopController {
       }
       return;
     }
-    this.state.shopActive = true;
-    this.state.currentShopOptions = selections;
+    this.state.stateManager.openShop({ shopOptions: selections, force });
     this.shopManager.open(selections, this.handleSelection);
-    eventBus.emit('shop:opened', { options: selections });
   }
 
   closeShop(message) {
     if (message) this.shopManager.updateMessage(message);
-    this.state.shopActive = false;
+    this.state.stateManager.closeShop({ message });
     this.shopManager.close();
     this.player.nextShopAt += SHOP_INTERVAL;
-    eventBus.emit('shop:closed', { message });
   }
 
   handleSelection(option) {

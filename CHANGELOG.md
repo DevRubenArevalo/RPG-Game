@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-12-10
+
+### Added
+- **GameStateManager Class**: Centralized state management for all major game state transitions
+  - **Methods**: `pause()`, `unpause()`, `togglePause()`, `openShop()`, `closeShop()`, `startBossFight()`, `endBossFight()`, `gameOver()`, `resetGameOver()`, `completeLevel()`, `resetLevelComplete()`
+  - **Query Methods**: `isPaused()`, `isShopActive()`, `isBossFightActive()`, `isGameOver()`, `isLevelComplete()`, `isGameplayBlocked()`, `getStateSummary()`
+  - **Event-Driven**: Automatically emits EventBus events for all state changes
+  - **Validation**: Prevents invalid state transitions (e.g., can't pause during game over)
+  - **Single Source of Truth**: One place to look for all state changes
+
+### Changed
+- **State Management**: Replaced direct state property manipulation with GameStateManager methods
+  - Updated `main.js`: 6 locations now use `state.stateManager` methods
+  - Updated `shopController.js`: `openShop()` and `closeShop()` use GameStateManager
+  - Updated `gameOverManager.js`: `trigger()` and `resetState()` use GameStateManager
+  - Updated `gameState.js`: Instantiates GameStateManager in constructor
+  - **Benefits**: Better debugging, easier testing, prevents bugs from invalid state changes
+
+### Documentation
+- **ARCHITECTURE.md Updates**: Added comprehensive GameStateManager section
+  - All available methods with descriptions
+  - Event emissions for each state change
+  - Usage examples showing proper patterns
+  - Benefits: single source of truth, event notifications, validation, testability
+  - Before/after examples showing direct manipulation vs. GameStateManager
+
+### Technical Details
+- **New Events**: 11 new events for state management
+  - `game:paused`, `game:unpaused`, `shop:opened`, `shop:closed`
+  - `boss:fight:started`, `boss:fight:ended`, `game:over`, `game:over:reset`
+  - `level:complete`, `level:complete:reset`, `game:state:reset`
+- **Files Modified**: 5 files (gameState.js, gameStateManager.js, main.js, shopController.js, gameOverManager.js)
+- **Risk**: Medium - Core state management changes, but well-isolated with comprehensive event system
+- **Time**: 4-5 hours (as estimated)
+
 ## [0.6.0] - 2025-12-10
 
 ### Changed

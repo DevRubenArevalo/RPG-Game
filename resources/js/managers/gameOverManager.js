@@ -82,8 +82,7 @@ export class GameOverManager {
 
   trigger() {
     if (this.state.gameOver) return;
-    this.state.gameOver = true;
-    this.state.shopActive = false;
+    this.state.stateManager.gameOver({ deathMessage: this.state.deathMessage });
     this.shopManager.close();
     this.keys.clear();
     const { canvas, camera, gameOverState } = this.state;
@@ -111,7 +110,7 @@ export class GameOverManager {
   }
 
   resetState() {
-    this.state.gameOver = false;
+    this.state.stateManager.resetGameOver();
     this.state.gameOverTears.length = 0;
     this.state.gameOverTearTimer = 0;
     this.state.gameOverNextTearSide = 'left';

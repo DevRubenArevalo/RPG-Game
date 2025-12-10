@@ -1,10 +1,14 @@
 import { Player, PLAYER_CONFIG } from '../entities/player.js';
 import { Room } from '../entities/room.js';
 import { SHOP_INTERVAL } from '../managers/shopManager.js';
+import { GameStateManager } from '../managers/gameStateManager.js';
 
 export class GameState {
   constructor(constants) {
     this.constants = constants;
+    
+    // Initialize GameStateManager for centralized state management
+    this.stateManager = new GameStateManager({ state: this });
     this.canvas = document.getElementById('game');
     this.ctx = this.canvas.getContext('2d');
     this.statusEl = document.getElementById('status');
