@@ -1958,7 +1958,7 @@ function resetGame(toHome = false, skipTutorial = true) {
     uiManager.updateAbilityList();
     
     roomController.initMainRoom(state, world);
-    audio.playLoop?.('music', audio.tracks.music[0], 0.4);
+    audio.startMusic?.('music');
   } else {
     console.log('🎮 Starting tutorial room');
     state.homeScreenActive = false;

@@ -5,6 +5,110 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-12-10
+
+### Added
+- **Entity Component System (ECS)**: Complete modular entity system for flexible game object creation
+  - `Entity` class - Container for components with ID and tags
+  - `Component` base class - Pure data containers
+  - `System` base class - Logic processing for entities
+  - `EntityManager` - Central hub for entity and system management
+
+### Components
+- **Core Components**: Position, Render, Physics, Health
+  - `PositionComponent` - 2D position, velocity, acceleration
+  - `RenderComponent` - Visual appearance (color, shape, layer, alpha)
+  - `PhysicsComponent` - Collision box, mass, friction, static/trigger flags
+  - `HealthComponent` - HP, max HP, armor, regeneration, damage tracking
+
+- **Gameplay Components**: Interactable, Dialogue, AI, Input, Projectile, Enemy, Player
+  - `InteractableComponent` - Range-based interactions with callbacks
+  - `DialogueComponent` - NPC dialogue trees with choices
+  - `AIComponent` - Basic AI with detection/attack ranges
+  - `InputComponent` - Player input state tracking
+  - `ProjectileComponent` - Damage, lifetime, piercing, target filtering
+  - `EnemyComponent` - Tier, damage, score/coin values
+  - `PlayerComponent` - Coins, score, upgrades
+
+### Systems
+- **Core Systems**: Physics, Render, Collision, Input (priority: 5-100)
+  - `PhysicsSystem` - Movement, gravity, friction simulation
+  - `RenderSystem` - Layer-based rendering with camera support
+  - `CollisionSystem` - AABB collision detection and resolution
+  - `InputSystem` - Updates input state from InputManager
+
+- **Gameplay Systems**: Interaction, Dialogue, AI, Projectile, Health (priority: 12-25)
+  - `InteractionSystem` - Range checks and interaction triggering
+  - `DialogueSystem` - NPC conversation management with UI integration
+  - `AISystem` - Basic AI behaviors (idle, chase, attack)
+  - `ProjectileSystem` - Lifetime management and hit detection
+  - `HealthSystem` - HP regeneration and death handling
+
+### Entity Factory
+- **Helper Functions**: Pre-configured entity creation
+  - `createPlayer()` - Player with Position, Render, Physics, Health, Player, Input components
+  - `createEnemy()` - Enemy with Position, Render, Physics, Health, Enemy, AI components
+  - `createProjectile()` - Projectile with Position, Render, Physics, Projectile components
+  - `createNPC()` - NPC with Position, Render, Physics, Interactable, Dialogue components
+  - `createCollectible()` - Collectible items with trigger collision and callbacks
+  - `createPlatform()` - Static platforms for terrain
+  - `createExampleDialogue()` - Sample dialogue generator
+
+### Examples
+- **10 Usage Examples** in `ecs/examples.js`:
+  1. Basic ECS setup with systems
+  2. Creating basic entities (player, platforms, enemies)
+  3. Creating NPCs with dialogue
+  4. Creating collectibles with callbacks
+  5. Shooting projectiles
+  6. Listening to ECS events
+  7. Querying entities by components/tags
+  8. Game loop integration
+  9. Custom entity creation
+  10. Save/load serialization
+
+### Events
+- **New ECS Events** via EventBus:
+  - `entity:created` - Entity added to manager
+  - `entity:destroyed` - Entity removed from manager
+  - `entity:died` - Entity health reached 0
+  - `entity:interacted` - Entity was interacted with
+  - `collision` - Two entities collided
+  - `projectile:hit` - Projectile hit target
+  - `projectile:expired` - Projectile lifetime ended
+  - `dialogue:started` - Dialogue conversation began
+  - `dialogue:advanced` - Dialogue moved to next line
+  - `dialogue:ended` - Dialogue finished
+  - `ai:attack` - AI entity initiated attack
+
+### Documentation
+- **ARCHITECTURE.md Updates**: Added comprehensive ECS section
+  - Core concepts (Entity, Component, System, EntityManager)
+  - Component catalog with descriptions
+  - System catalog with priorities
+  - Entity factory examples
+  - Quick start guide
+  - Creating new entity types
+  - ECS events reference
+  - Migration path from old entities
+  - Link to 10 usage examples
+
+### Technical Details
+- **Files Created**: 13 new files in `resources/js/ecs/` directory
+  - Core: Entity.js, Component.js, System.js, EntityManager.js (4 files)
+  - Components: CoreComponents.js, GameplayComponents.js (2 files)
+  - Systems: CoreSystems.js, GameplaySystems.js (2 files)
+  - Utilities: EntityFactory.js, index.js, examples.js (3 files)
+- **Component Types**: 11 components (4 core + 7 gameplay)
+- **System Types**: 9 systems (4 core + 5 gameplay)
+- **Factory Functions**: 7 entity creators
+- **Architecture**: Composition over inheritance, data-oriented design
+- **Integration**: Works alongside existing code, gradual migration supported
+- **Performance**: Systems process entities by component type efficiently
+- **Flexibility**: Mix-and-match components for unlimited entity types
+- **Risk**: None (pure addition, existing code unchanged)
+- **Time**: ~8 hours implementation + testing + documentation
+
 ## [0.8.0] - 2025-12-10
 
 ### Added

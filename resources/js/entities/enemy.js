@@ -178,7 +178,6 @@ export function updateEnemies({
         trailSegments,
         slimeGlobs,
         playerDamagePerTick,
-        spawnDamageNumber,
         ACID_DEBUFF_DURATION,
         ACID_TICK_INTERVAL,
         enemyProjectiles,
@@ -658,7 +657,6 @@ function updateBossEnemy(enemy, dt, {
     trailSegments,
     slimeGlobs,
     playerDamagePerTick,
-    spawnDamageNumber,
     ACID_DEBUFF_DURATION,
     ACID_TICK_INTERVAL,
   );
@@ -681,7 +679,6 @@ function applyBossPoison(
   trailSegments,
   slimeGlobs,
   playerDamagePerTick,
-  spawnDamageNumber,
   ACID_DEBUFF_DURATION,
   ACID_TICK_INTERVAL,
 ) {

@@ -15,7 +15,17 @@ This document describes the architecture and file organization of the RPG Game. 
 resources/js/
 ├── config/          # All game configuration constants
 ├── core/            # Core game systems and infrastructure
-├── entities/        # Game entities (Player, Enemy, etc.)
+├── ecs/             # Entity Component System (NEW in v0.9.0)
+│   ├── components/  # Reusable components (Position, Health, etc.)
+│   ├── systems/     # Logic systems (Physics, Rendering, AI, etc.)
+│   ├── Entity.js    # Entity class (container for components)
+│   ├── Component.js # Base Component class
+│   ├── System.js    # Base System class
+│   ├── EntityManager.js # Central entity management
+│   ├── EntityFactory.js # Helper functions to create entities
+│   ├── index.js     # Barrel export
+│   └── examples.js  # Usage examples
+├── entities/        # Legacy entities (being migrated to ECS)
 ├── systems/         # High-level game systems and controllers
 ├── managers/        # Feature-specific managers
 ├── utils/           # Utility functions and helpers
@@ -98,8 +108,264 @@ eventBus.on('enemy:killed', ({ enemy }) => {
 
 ---
 
-### `entities/` - Game Entities
+### `ecs/` - Entity Component System ⭐ NEW
+**Purpose:** Modular entity creation with composable components and systems.
+
+**When to use:**
+- Creating new entity types (NPCs, enemies, items, etc.)
+- Adding interactable objects
+- Implementing dialogue systems
+- Building modular, reusable game objects
+
+**Why ECS?**
+- **Composition over Inheritance** - Mix and match components instead of deep class hierarchies
+- **Flexibility** - Create new entity types by combining existing components
+- **Performance** - Systems process all entities efficiently
+- **Maintainability** - Logic is centralized in systems, not scattered across entity classes
+
+**Core Concepts:**
+
+**1. Entity** - Container with an ID and components
+```javascript
+import { Entity } from './ecs/index.js';
+
+const entity = new Entity('MyEntity');
+entity
+  .addComponent(new PositionComponent({ x: 100, y: 100 }))
+  .addComponent(new HealthComponent({ maxHealth: 50 }))
+  .addTag('enemy');
+```
+
+**2. Component** - Pure data, no logic
+```javascript
+import { Component } from './ecs/index.js';
+
+class CustomComponent extends Component {
+  constructor({ value }) {
+    super('Custom');
+    this.value = value;
+  }
+}
+```
+
+**3. System** - Logic that processes entities with specific components
+```javascript
+import { System } from './ecs/index.js';
+
+class CustomSystem extends System {
+  constructor({ entityManager }) {
+    super({
+      requiredComponents: ['Position', 'Custom'],
+      entityManager,
+      priority: 10
+    });
+  }
+
+  process(entities, deltaTime) {
+    for (const entity of entities) {
+      const pos = entity.getComponent('Position');
+      const custom = entity.getComponent('Custom');
+      // ... do something with components
+    }
+  }
+}
+```
+
+**4. EntityManager** - Central hub for entities and systems
+```javascript
+import { EntityManager } from './ecs/index.js';
+
+const entityManager = new EntityManager();
+entityManager.addSystem(new PhysicsSystem({ entityManager }));
+entityManager.addEntity(entity);
+
+// In game loop:
+entityManager.update(deltaTime);
+```
+
+**Available Components:**
+
+*Core Components:*
+- `PositionComponent` - Position, velocity, acceleration
+- `RenderComponent` - Visual appearance (color, shape, sprite)
+- `PhysicsComponent` - Collision box, mass, friction
+- `HealthComponent` - HP, armor, regeneration
+
+*Gameplay Components:*
+- `InteractableComponent` - Makes entity interactable
+- `DialogueComponent` - NPC dialogue trees
+- `AIComponent` - AI behavior and targeting
+- `InputComponent` - Player input state
+- `ProjectileComponent` - Projectile behavior
+- `EnemyComponent` - Enemy-specific data
+- `PlayerComponent` - Player stats and upgrades
+
+**Available Systems:**
+
+*Core Systems:*
+- `PhysicsSystem` - Movement and gravity
+- `RenderSystem` - Drawing entities
+- `CollisionSystem` - Collision detection and response
+- `InputSystem` - Input handling
+
+*Gameplay Systems:*
+- `InteractionSystem` - Handle player interactions
+- `DialogueSystem` - Manage NPC conversations
+- `AISystem` - AI behavior processing
+- `ProjectileSystem` - Projectile lifecycle
+- `HealthSystem` - Health regeneration and death
+
+**Entity Factory Functions:**
+
+```javascript
+import { 
+  createPlayer,
+  createEnemy,
+  createNPC,
+  createProjectile,
+  createCollectible,
+  createPlatform
+} from './ecs/index.js';
+
+// Create a player
+const player = createPlayer({ x: 100, y: 100, maxHealth: 100 });
+
+// Create an NPC with dialogue
+const npc = createNPC({
+  x: 300, y: 400,
+  name: 'Shopkeeper',
+  dialogue: [
+    { speaker: 'Shopkeeper', text: 'Welcome!' },
+    { speaker: 'Shopkeeper', text: 'What can I get you?' }
+  ]
+});
+
+// Create an enemy
+const enemy = createEnemy({ 
+  x: 500, y: 400, 
+  tier: 2, 
+  maxHealth: 75 
+});
+```
+
+**Quick Start Example:**
+
+```javascript
+// 1. Import ECS
+import { 
+  EntityManager, 
+  PhysicsSystem, 
+  RenderSystem,
+  createPlayer,
+  createEnemy 
+} from './ecs/index.js';
+
+// 2. Create entity manager
+const entityManager = new EntityManager();
+
+// 3. Add systems
+entityManager.addSystem(new PhysicsSystem({ entityManager }));
+entityManager.addSystem(new RenderSystem({ entityManager, ctx }));
+
+// 4. Create entities
+const player = createPlayer({ x: 100, y: 100 });
+const enemy = createEnemy({ x: 300, y: 100, tier: 1 });
+
+entityManager.addEntity(player);
+entityManager.addEntity(enemy);
+
+// 5. Update in game loop
+function gameLoop(deltaTime) {
+  entityManager.update(deltaTime);
+}
+```
+
+**Creating New Entity Types:**
+
+```javascript
+import { Entity } from './ecs/index.js';
+import { 
+  PositionComponent,
+  RenderComponent,
+  PhysicsComponent,
+  InteractableComponent
+} from './ecs/index.js';
+
+function createChest({ x, y }) {
+  const chest = new Entity('Chest');
+  
+  chest
+    .addComponent(new PositionComponent({ x, y }))
+    .addComponent(new RenderComponent({
+      width: 40,
+      height: 30,
+      color: '#8B4513',
+      shape: 'rect'
+    }))
+    .addComponent(new PhysicsComponent({
+      width: 40,
+      height: 30,
+      isStatic: true
+    }))
+    .addComponent(new InteractableComponent({
+      range: 50,
+      prompt: 'Press E to open',
+      singleUse: true,
+      onInteract: (chest, player) => {
+        console.log('Chest opened!');
+        // Give player loot
+      }
+    }))
+    .addTag('chest')
+    .addTag('interactable');
+  
+  return chest;
+}
+```
+
+**ECS Events:**
+
+The ECS emits events through EventBus:
+- `entity:created` - New entity added
+- `entity:destroyed` - Entity removed
+- `entity:died` - Entity health reached 0
+- `entity:interacted` - Entity was interacted with
+- `collision` - Entities collided
+- `projectile:hit` - Projectile hit target
+- `projectile:expired` - Projectile lifetime ended
+- `dialogue:started` - Dialogue began
+- `dialogue:advanced` - Dialogue moved to next line
+- `dialogue:ended` - Dialogue finished
+- `ai:attack` - AI initiated attack
+
+**Migration Path:**
+
+The ECS system runs alongside existing code. You can migrate gradually:
+1. Start with new entity types (NPCs, collectibles)
+2. Migrate projectiles to ECS
+3. Migrate enemies to ECS
+4. Finally migrate player to ECS
+5. Remove old entity classes when migration is complete
+
+**Examples:**
+
+See `resources/js/ecs/examples.js` for 10 detailed examples covering:
+- Basic setup
+- Creating entities
+- NPCs with dialogue
+- Collectibles
+- Shooting projectiles
+- Event listening
+- Entity queries
+- Game loop integration
+- Custom entities
+- Save/load
+
+---
+
+### `entities/` - Legacy Game Entities
 **Purpose:** Individual game objects with their own state and behavior.
+**Status:** Being migrated to ECS. New entities should use ECS instead.
 
 **When to add here:**
 - Player characters
@@ -961,9 +1227,10 @@ View coverage reports: `coverage/index.html` after running `npm run test:coverag
 4. **Document with JSDoc** - Help future developers (including yourself)
 5. **Follow naming conventions** - Consistent naming makes code readable
 6. **Test as you go** - Verify features work before moving on
+7. **Prefer ECS for new entities** - Use Entity Component System for flexibility
 
 ---
 
-**Version:** 0.8.0  
+**Version:** 0.9.0  
 **Last Updated:** December 2025  
 **Maintained by:** Development Team
