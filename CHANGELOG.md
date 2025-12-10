@@ -1,5 +1,118 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.5.0] - 2025-12-09
+
+### Added
+- **Expanded Event-Driven Architecture**: Added 11 new EventBus events for comprehensive decoupling
+  - `audio:effect:play` - Sound effect playback (replaces direct audio.playEffect calls)
+  - `audio:loop:start` - Start looping audio (e.g., corrosion, boss music)
+  - `audio:loop:stop` - Stop looping audio
+  - `damage:number:spawn` - Spawn visual damage indicator
+  - `game:over` - Game over state triggered
+  - `level:complete` - Level completion triggered
+  - `shop:opened` - Shop interface opened
+  - `shop:closed` - Shop interface closed
+  - `upgrade:purchased` - Upgrade purchased from shop
+  - `player:mutate` - Player mutation ability triggered
+  - Total events: 18 (7 from v0.4.0 + 11 new)
+
+### Changed
+- **AudioManager Decoupling**: Integrated EventBus into AudioManager
+  - Removed all direct `audio.playEffect()` calls from game logic
+  - Audio system now listens for events rather than being called directly
+  - Eliminates tight coupling between audio and gameplay code
+- **Damage System Decoupling**: Replaced direct `spawnDamageNumber()` calls with events
+  - Removed function parameter passing through multiple layers
+  - Cleaned up enemy.js updateEnemies() and updateBossEnemy() signatures
+  - All damage numbers now spawned via `damage:number:spawn` event
+- **Game State Decoupling**: Game state changes now emit events
+  - `gameOverManager.trigger()` replaced with `game:over` event
+  - Direct `state.levelComplete` mutations replaced with `level:complete` event
+  - Event listeners handle UI updates and state changes
+- **Shop System Decoupling**: Shop lifecycle now emits events
+  - ShopController emits `shop:opened` and `shop:closed` events
+  - Upgrade purchases emit `upgrade:purchased` event
+  - Enables future shop-related features without tight coupling
+- **Player Mutation Decoupling**: Mutation trigger moved to event system
+  - Player.js emits `player:mutate` event instead of calling mutateSlime() directly
+  - Mutation logic remains in main.js but triggered via event
+
+### Documentation
+- **ARCHITECTURE.md Updates**: Expanded EventBus documentation
+  - Complete event catalog with 18 documented events
+  - Event payload descriptions for each event
+  - Handler behavior documentation
+  - Usage examples for all event patterns
+
+### Technical Details
+- Removed callback parameter passing (hurtPlayer, spawnDamageNumber, playerDamagePerTick, playCorrosionSound)
+- Reduced direct function call dependencies across 8+ files
+- AudioManager constructor now accepts EventBus parameter
+- All sound effects (9 types) now triggered via events
+- 10+ direct audio calls replaced with event emissions
+
+## [0.4.0] - 2025-12-09
+
+### Added
+- **Architecture Documentation**: Created comprehensive `ARCHITECTURE.md` guide
+  - Complete folder structure explanation
+  - Code placement guidelines with examples
+  - Event-driven architecture patterns
+  - JSDoc standards and code style guide
+  - Development workflow and best practices
+  - Troubleshooting section for common issues
+- **Event-Driven System**: Implemented EventBus for decoupled communication
+  - `enemy:killed` - Enemy defeated event
+  - `player:damaged` - Player damage event
+  - `player:collected:chunk` - Chunk collection event
+  - `player:collected:coin` - Coin collection event
+  - `shop:reached` - Shop reached event
+  - `boss:defeated` - Boss defeated event
+  - `boss:shield:activated` - Boss shield activation event
+- **JSDoc Type Documentation**: Added comprehensive type hints across entire codebase
+  - Config files with typedef definitions
+  - All core classes (Game, Renderer, EventBus, GameState)
+  - All entity classes (Player, Enemy, Projectile, Room)
+  - All manager classes (6 files)
+  - All system/controller classes (3 files)
+  - All utility functions (6 functions)
+
+### Changed
+- **Major Code Reorganization**: Restructured entire codebase into organized folders
+  - Created `entities/` folder for game entities (Player, Enemy, Projectile, Room)
+  - Created `systems/` folder for high-level controllers (WorldController, ShopController, RoomController)
+  - Created `managers/` folder for feature managers (AudioManager, InputManager, PlayerManager, ShopManager, UIManager, GameOverManager)
+  - Created `core/` folder for core game systems (EventBus, GameLoop, GameState, Renderer)
+  - Created `config/` folder for all configuration constants
+  - Created `utils/` folder for utility functions
+- **Configuration System**: Extracted all constants to dedicated config files
+  - `enemyConfig.js` - Enemy and boss configuration
+  - `playerConfig.js` - Player physics and abilities
+  - `worldConfig.js` - World generation and physics
+  - `uiConfig.js` - UI rendering and animations
+  - `upgrades.js` - Shop upgrade definitions
+  - `config/index.js` - Barrel export for convenient imports
+- **Import Paths**: Updated all relative imports across 30+ files to reflect new structure
+- **Dependency Injection**: All classes now use constructor-based dependency injection
+- **Code Patterns**: Established consistent coding patterns across entire codebase
+
+### Fixed
+- Import path issues resolved with proper relative paths using `../` syntax
+- All cross-file dependencies now properly organized and documented
+
+## [0.3.3] - 2025-12-09
+
+### Fixed
+- Trap visual rendering bug when boss spawns (added `traps.length = 0`)
+- Fling Burst cooldown reduced from 6 seconds to 3 seconds
+- Boss shockwave heights now decrease progressively: 100%, 65%, 35%
+- Version display cleaned up (removed "FromNothing-" prefix)
+
 ## [0.2.0] - Home Screen & Game Over Overhaul
 
 - Added an animated title screen with a slime-king backdrop, Start Run/Options/Credits buttons, and a looping “The Lonely Slime” home-theme. Options/Credits swap the info panel while Start hides the overlay and kicks off the run.

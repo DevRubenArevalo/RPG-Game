@@ -1,14 +1,38 @@
 import { Projectile } from './projectile.js';
-import { clamp, overlap } from './utils.js';
-import { ENEMY_CONFIG, BOSS_CONFIG } from './config/index.js';
-import { eventBus } from './core/EventBus.js';
+import { clamp, overlap } from '../utils/utils.js';
+import { ENEMY_CONFIG, BOSS_CONFIG } from '../config/index.js';
+import { eventBus } from '../core/EventBus.js';
 
+/**
+ * Enemy - Enemy entity class
+ */
 export class Enemy {
+  /**
+   * @param {Object} props - Enemy properties
+   */
   constructor(props) {
     Object.assign(this, props);
   }
 }
 
+/**
+ * Create a new enemy entity
+ * @param {Object} config - Enemy configuration
+ * @param {string} config.id - Unique enemy identifier
+ * @param {number} config.x - X position
+ * @param {number} config.y - Y position
+ * @param {number} config.minX - Minimum roaming X
+ * @param {number} config.maxX - Maximum roaming X
+ * @param {number} config.speed - Movement speed
+ * @param {number} config.health - Health points
+ * @param {number} config.damage - Contact damage
+ * @param {number} config.worldWidth - World width limit
+ * @param {string} [config.supportId] - Platform support ID
+ * @param {string} [config.color] - Enemy color
+ * @param {string} [config.tier] - Enemy tier
+ * @param {number} [config.acidTickInterval] - Acid damage interval
+ * @returns {Enemy} Configured enemy instance
+ */
 export function createEnemy({
   id,
   x,
@@ -133,7 +157,6 @@ export function updateEnemies({
   enemyProjectiles,
   hurtPlayer,
   playerDamagePerTick,
-  spawnDamageNumber,
   ACID_DEBUFF_DURATION,
   ACID_TICK_INTERVAL,
   PROJECTILE_INTERVAL,
@@ -311,7 +334,12 @@ export function updateEnemies({
         const stackMultiplier = Math.max(1, enemy.acidStacks || 0);
         const tickDamage = debug999Damage ? 999 : (playerDamagePerTick() * stackMultiplier);
         enemy.health -= tickDamage;
-        spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, tickDamage, `enemy-${enemy.id}`);
+        eventBus.emit('damage:number:spawn', { 
+          x: enemy.x + enemy.w / 2, 
+          y: enemy.y, 
+          damage: tickDamage, 
+          key: `enemy-${enemy.id}` 
+        });
       }
     } else {
       enemy.acidTickTimer = ACID_TICK_INTERVAL;
@@ -378,7 +406,12 @@ export function updateEnemies({
       
       if (stomping) {
         enemy.health -= 2;
-        spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, 2, `enemy-${enemy.id}`);
+        eventBus.emit('damage:number:spawn', { 
+          x: enemy.x + enemy.w / 2, 
+          y: enemy.y, 
+          damage: 2, 
+          key: `enemy-${enemy.id}` 
+        });
         player.vy = -player.jumpSpeed * 0.5;
         player.grounded = false;
         if (enemy.health <= 0) {
@@ -481,7 +514,6 @@ function updateBossEnemy(enemy, dt, {
   trailSegments,
   slimeGlobs,
   playerDamagePerTick,
-  spawnDamageNumber,
   ACID_DEBUFF_DURATION,
   ACID_TICK_INTERVAL,
   enemyProjectiles,
@@ -709,7 +741,12 @@ function applyBossPoison(
       const damage = playerDamagePerTick() * stackMultiplier * 0.5;
       enemy.health = Math.max(0, enemy.health - damage);
       enemy.hitFlash = Math.max(0.2, enemy.hitFlash || 0);
-      spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, damage, 'boss-poison');
+      eventBus.emit('damage:number:spawn', { 
+        x: enemy.x + enemy.w / 2, 
+        y: enemy.y, 
+        damage: damage, 
+        key: 'boss-poison' 
+      });
     }
   } else {
     enemy.acidTickTimer = interval;

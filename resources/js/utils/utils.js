@@ -1,3 +1,10 @@
+/**
+ * Clamps a value between min and max
+ * @param {number} value - Value to clamp
+ * @param {number} min - Minimum value
+ * @param {number} max - Maximum value
+ * @returns {number} Clamped value
+ */
 export function clamp(value, min, max) {
   if (min > max) {
     [min, max] = [max, min];
@@ -7,6 +14,12 @@ export function clamp(value, min, max) {
   return value;
 }
 
+/**
+ * Returns a random number between min and max
+ * @param {number} min - Minimum value
+ * @param {number} max - Maximum value
+ * @returns {number} Random number in range
+ */
 export function randomRange(min, max) {
   if (min === max) return min;
   if (min > max) {
@@ -15,6 +28,12 @@ export function randomRange(min, max) {
   return Math.random() * (max - min) + min;
 }
 
+/**
+ * Checks if two rectangles overlap (AABB collision)
+ * @param {Object} a - First rectangle with x, y, w, h
+ * @param {Object} b - Second rectangle with x, y, w, h
+ * @returns {boolean} True if rectangles overlap
+ */
 export function overlap(a, b) {
   return a.x < b.x + b.w &&
     a.x + a.w > b.x &&
@@ -22,6 +41,12 @@ export function overlap(a, b) {
     a.y + a.h > b.y;
 }
 
+/**
+ * Creates a shallow copy of specified properties from source object
+ * @param {Object} source - Source object
+ * @param {string[]} keys - Keys to copy
+ * @returns {Object} New object with copied properties
+ */
 export function snapshot(source, keys = []) {
   const out = {};
   keys.forEach((key) => {

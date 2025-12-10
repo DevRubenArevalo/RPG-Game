@@ -1,4 +1,15 @@
+/**
+ * Renderer - Handles all game rendering and visual effects
+ */
 export class Renderer {
+  /**
+   * @param {Object} config - Renderer configuration
+   * @param {GameState} config.state - Game state instance
+   * @param {Object} config.gameOverManager - Game over manager
+   * @param {number} config.markerSpacing - Distance marker spacing
+   * @param {number} config.acidDebuffDuration - Acid debuff duration
+   * @param {number} config.damageLifetime - Damage number lifetime
+   */
   constructor({ state, gameOverManager, markerSpacing, acidDebuffDuration, damageLifetime }) {
     this.state = state;
     this.canvas = state.canvas;

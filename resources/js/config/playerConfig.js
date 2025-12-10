@@ -3,6 +3,32 @@
  * All constants related to player behavior, stats, and physics
  */
 
+/**
+ * @typedef {Object} PlayerConfig
+ * @property {number} baseWidth - Normal player width in pixels
+ * @property {number} baseHeight - Normal player height in pixels
+ * @property {number} duckHeight - Height when ducking in pixels
+ * @property {number} maxSpeed - Maximum horizontal velocity
+ * @property {number} accel - Horizontal acceleration rate
+ * @property {number} jumpSpeed - Initial jump velocity
+ * @property {number} jumpBoostThreshold - Health required for jump boost
+ * @property {number} jumpBoostMultiplier - Jump power multiplier when boosted
+ * @property {number} maxHealth - Default maximum health
+ * @property {number} startingHealth - Health at game start
+ * @property {number} invulnerability - Invulnerability duration after hit (seconds)
+ * @property {number} mutationHealthCost - Health required to mutate
+ * @property {number} mutationResultHealth - Health after mutation
+ * @property {number} squishRecovery - Squish effect recovery rate per frame
+ * @property {number} maxSquish - Maximum squish amount
+ * @property {number} flingChargeRate - Charge accumulation rate
+ * @property {number} flingMinCharge - Minimum charge to trigger fling
+ * @property {number} flingSlowThreshold - Speed threshold for "slowing down"
+ * @property {number} flingCooldown - Cooldown after fling (seconds)
+ * @property {number} wallModeGravity - Gravity multiplier in wall mode
+ * @property {number} coinMultiplierBase - Base coin value multiplier
+ */
+
+/** @type {PlayerConfig} */
 export const PLAYER_CONFIG = {
   // Dimensions
   baseWidth: 56,              // Normal player width

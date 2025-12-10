@@ -1,3 +1,20 @@
+/**
+ * @typedef {Object} UpgradeCost
+ * @property {number} [coins] - Coin cost
+ * @property {number} [hp] - Health cost
+ */
+
+/**
+ * @typedef {Object} Upgrade
+ * @property {string} id - Unique upgrade identifier
+ * @property {string} title - Display title
+ * @property {string} desc - Description text
+ * @property {string} artClass - CSS class for visual
+ * @property {UpgradeCost} cost - Cost requirements
+ * @property {number} [magnetRange] - Magnet range (if applicable)
+ */
+
+/** @type {Upgrade[]} */
 export const UPGRADES = [
   {
     id: 'slime_wall',

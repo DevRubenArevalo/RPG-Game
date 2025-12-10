@@ -1,6 +1,6 @@
-import { Player, PLAYER_CONFIG } from './player.js';
-import { Room } from './room.js';
-import { SHOP_INTERVAL } from './shopManager.js';
+import { Player, PLAYER_CONFIG } from '../entities/player.js';
+import { Room } from '../entities/room.js';
+import { SHOP_INTERVAL } from '../managers/shopManager.js';
 
 export class GameState {
   constructor(constants) {

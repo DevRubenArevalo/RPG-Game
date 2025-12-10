@@ -1,4 +1,13 @@
+/**
+ * Game - Main game loop controller
+ * Handles the update-render cycle using requestAnimationFrame
+ */
 export class Game {
+  /**
+   * @param {Function} update - Update function called each frame
+   * @param {Renderer} renderer - Renderer instance
+   * @param {GameState} state - Game state instance
+   */
   constructor(update, renderer, state) {
     this.update = update;
     this.renderer = renderer;

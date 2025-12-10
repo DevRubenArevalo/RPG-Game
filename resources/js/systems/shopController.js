@@ -1,11 +1,24 @@
-import { SHOP_INTERVAL } from './shopManager.js';
-import { UPGRADES } from './upgrades.js';
-import { CONSTANTS } from './config/index.js';
+import { SHOP_INTERVAL } from '../managers/shopManager.js';
+import { UPGRADES } from '../config/upgrades.js';
+import { CONSTANTS } from '../config/index.js';
+import { eventBus } from '../core/EventBus.js';
 
 const SHOP_REFRESH_COST = 100;
 const PLATFORM_UNIT = CONSTANTS.level.platformUnit;
 
+/**
+ * ShopController - Manages shop functionality and upgrade purchasing
+ */
 export class ShopController {
+  /**
+   * @param {Object} config - Shop controller configuration
+   * @param {GameState} config.state - Game state
+   * @param {Player} config.player - Player instance
+   * @param {PlayerManager} config.playerManager - Player manager
+   * @param {ShopManager} config.shopManager - Shop manager
+   * @param {HTMLElement} config.shopRefreshButton - Refresh button element
+   * @param {HTMLElement} config.shopSkipButton - Skip button element
+   */
   constructor({
     state: gameState,
     player,
@@ -59,6 +72,7 @@ export class ShopController {
     this.state.shopActive = true;
     this.state.currentShopOptions = selections;
     this.shopManager.open(selections, this.handleSelection);
+    eventBus.emit('shop:opened', { options: selections });
   }
 
   closeShop(message) {
@@ -66,6 +80,7 @@ export class ShopController {
     this.state.shopActive = false;
     this.shopManager.close();
     this.player.nextShopAt += SHOP_INTERVAL;
+    eventBus.emit('shop:closed', { message });
   }
 
   handleSelection(option) {
@@ -85,6 +100,7 @@ export class ShopController {
       return;
     }
     this.applyUpgrade(upgrade);
+    eventBus.emit('upgrade:purchased', { upgrade, player: this.player });
     this.shopManager.updateMessage(`${upgrade.title} unlocked!`);
     this.closeShop();
   }

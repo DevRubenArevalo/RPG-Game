@@ -1,3 +1,4 @@
+/** @type {Object<string, string>} Audio file paths */
 export const AUDIO_TRACKS = {
   music: 'resources/audio/Time To Slime.mp3',
   home: 'resources/audio/The Lonely Slime.mp3',
@@ -13,8 +14,16 @@ export const AUDIO_TRACKS = {
   slimeCreation: 'resources/audio/slime-being-created.mp3',
 };
 
+/**
+ * AudioManager - Manages all game audio and music
+ */
 export class AudioManager {
-  constructor(paths = AUDIO_TRACKS, muteToggle) {
+  /**
+   * @param {Object<string, string>} paths - Audio file paths
+   * @param {Function} muteToggle - Mute toggle function
+   * @param {EventBus} eventBus - Event bus for decoupled communication
+   */
+  constructor(paths = AUDIO_TRACKS, muteToggle, eventBus) {
     this.music = this.create(paths.music, { loop: true, volume: 0.2 });
     this.home = this.create(paths.home, { loop: true, volume: 0.2 });
     this.bossMusic = this.create(paths.bossMusic, { loop: true, volume: 0.25 });
@@ -48,6 +57,31 @@ export class AudioManager {
     if (this.muteToggle) {
       this.muteToggle.addEventListener('click', () => this.toggleMute());
     }
+    
+    // Register event listeners for decoupled audio playback
+    if (eventBus) {
+      this.setupEventListeners(eventBus);
+    }
+  }
+  
+  /**
+   * Setup EventBus listeners for audio events
+   * @param {EventBus} eventBus - Event bus instance
+   */
+  setupEventListeners(eventBus) {
+    // Audio effect play event
+    eventBus.on('audio:effect:play', ({ effectName }) => {
+      this.playEffect(effectName);
+    });
+    
+    // Audio loop control events
+    eventBus.on('audio:loop:start', ({ loopName }) => {
+      this.ensureLoop(loopName);
+    });
+    
+    eventBus.on('audio:loop:stop', ({ loopName }) => {
+      this.stopLoop(loopName);
+    });
   }
 
   create(src, { loop = false, volume = 1 } = {}) {

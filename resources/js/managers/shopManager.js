@@ -1,5 +1,9 @@
+/** @type {number} Distance between shops */
 export const SHOP_INTERVAL = 5000;
 
+/**
+ * ShopManager - Manages shop UI and upgrade selection
+ */
 export class ShopManager {
   constructor() {
     this.overlay = document.getElementById('shopOverlay');

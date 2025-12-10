@@ -1,20 +1,20 @@
 import { CONSTANTS, ENEMY_CONFIG } from './config/index.js';
-import { AudioManager, AUDIO_TRACKS } from './audioManager.js';
-import { ShopManager, SHOP_INTERVAL } from './shopManager.js';
-import { GameState } from './gameState.js';
-import { createEnemy, createBossEnemy, updateEnemies } from './enemy.js';
-import { Player, PLAYER_CONFIG, updatePlayerMovement } from './player.js';
-import { UPGRADES } from './upgrades.js';
-import { clamp, overlap, checkBossCollision } from './utils.js';
-import { InputManager } from './inputManager.js';
-import { PlayerManager } from './playerManager.js';
-import { ShopController } from './shopController.js';
-import { WorldController } from './worldController.js';
-import { GameOverManager } from './gameOverManager.js';
-import { UIManager } from './uiManager.js';
-import { Renderer } from './renderer.js';
-import { Game } from './gameLoop.js';
-import { RoomController } from './roomController.js';
+import { AudioManager, AUDIO_TRACKS } from './managers/audioManager.js';
+import { ShopManager, SHOP_INTERVAL } from './managers/shopManager.js';
+import { GameState } from './core/gameState.js';
+import { createEnemy, createBossEnemy, updateEnemies } from './entities/enemy.js';
+import { Player, PLAYER_CONFIG, updatePlayerMovement } from './entities/player.js';
+import { UPGRADES } from './config/upgrades.js';
+import { clamp, overlap, checkBossCollision } from './utils/utils.js';
+import { InputManager } from './managers/inputManager.js';
+import { PlayerManager } from './managers/playerManager.js';
+import { ShopController } from './systems/shopController.js';
+import { WorldController } from './systems/worldController.js';
+import { GameOverManager } from './managers/gameOverManager.js';
+import { UIManager } from './managers/uiManager.js';
+import { Renderer } from './core/renderer.js';
+import { Game } from './core/gameLoop.js';
+import { RoomController } from './systems/roomController.js';
 import { eventBus } from './core/EventBus.js';
 
 // Enable event debugging during development (set to false in production)
@@ -40,7 +40,7 @@ state.homeScreenActive = true;
 state.gameOverTears = [];
 state.gameOverTearTimer = 0;
 state.gameOverNextTearSide = 'left';
-const audio = new AudioManager(AUDIO_TRACKS, muteToggle);
+const audio = new AudioManager(AUDIO_TRACKS, muteToggle, eventBus);
 let gameInstance;
 const shopManager = new ShopManager();
 const roomController = new RoomController();
@@ -293,7 +293,6 @@ function update(dt) {
       enemyProjectiles,
       hurtPlayer,
       playerDamagePerTick,
-      spawnDamageNumber,
       ACID_DEBUFF_DURATION,
       ACID_TICK_INTERVAL,
       PROJECTILE_INTERVAL,
@@ -958,7 +957,12 @@ function updateEnemyProjectiles(dt) {
           if (!(enemy.isBoss && enemy.invulnerabilityTimer > 0)) {
             const prevHealth = enemy.health;
             enemy.health -= proj.damage ?? 1;
-            spawnDamageNumber(enemy.x + enemy.w / 2, enemy.y, proj.damage ?? 1, `enemy-${enemy.id}`);
+            eventBus.emit('damage:number:spawn', { 
+              x: enemy.x + enemy.w / 2, 
+              y: enemy.y, 
+              damage: proj.damage ?? 1, 
+              key: `enemy-${enemy.id}` 
+            });
             
             // Boss health bar depletion drops chunks
             if (enemy.isBoss && prevHealth > 0) {
@@ -1168,7 +1172,7 @@ function updateCinematic(dt) {
         state.cameraZoomTarget = cine.zoom;
         boss.roarActive = true;
         state.bossRoarWave = { timer: 0, duration: 1.2 };
-        audio.playEffect('bossRoar');
+        eventBus.emit('audio:effect:play', { effectName: 'bossRoar' });
       }
       break;
     }
@@ -1591,11 +1595,8 @@ function finishDefeatCinematic() {
   state.boss = null;
   state.bossDefeated = true;
   state.bossFightActive = false;
-  state.levelComplete = true;
-  state.levelCompleteTimer = 0;
+  eventBus.emit('level:complete');
   state.paused = false;
-  uiManager.setLevelCompleteVisible(true);
-  statusEl.textContent = 'Level Complete - press Play Again';
   audio.startMusic?.();
 }
 
@@ -1621,23 +1622,23 @@ function resetBossState() {
 }
 
 function playEnemyDeathSound() {
-  audio.playEffect('death');
+  eventBus.emit('audio:effect:play', { effectName: 'death' });
 }
 
 function playJumpSound() {
-  audio.playEffect('jump');
+  eventBus.emit('audio:effect:play', { effectName: 'jump' });
 }
 
 function playCoinSound() {
-  audio.playEffect('coin');
+  eventBus.emit('audio:effect:play', { effectName: 'coin' });
 }
 
 function playChunkSound() {
-  audio.playEffect('chunk');
+  eventBus.emit('audio:effect:play', { effectName: 'chunk' });
 }
 
 function playGameOverSound() {
-  audio.playEffect('gameOver');
+  eventBus.emit('audio:effect:play', { effectName: 'gameOver' });
 }
 
 function stopGameOverSound() {
@@ -1645,7 +1646,7 @@ function stopGameOverSound() {
 }
 
 function playHitSound() {
-  audio.playEffect('hit');
+  eventBus.emit('audio:effect:play', { effectName: 'hit' });
 }
 
 function stopAllSoundsExceptGameOver() {
@@ -1657,11 +1658,11 @@ function resumeBackgroundMusic() {
 }
 
 function playCorrosionSound() {
-  audio.ensureLoop('corrosion');
+  eventBus.emit('audio:loop:start', { loopName: 'corrosion' });
 }
 
 function stopCorrosionSound() {
-  audio.stopLoop('corrosion');
+  eventBus.emit('audio:loop:stop', { loopName: 'corrosion' });
 }
 
 
@@ -2002,7 +2003,7 @@ function initializeOpeningCutscene() {
   audio.stopLoop?.('music');
   
   // Play slime creation sound
-  audio.playEffect?.('slimeCreation');
+  eventBus.emit('audio:effect:play', { effectName: 'slimeCreation' });
   
   // Start opening cutscene with player spawning from poison pool
   const cutsceneObj = {
@@ -2756,6 +2757,29 @@ function autoCloseDialogIfTooFar() {
 // EVENT LISTENERS - Decoupled game event handlers
 // ============================================================================
 
+// Damage number spawn event - handles visual damage feedback
+eventBus.on('damage:number:spawn', ({ x, y, damage, key }) => {
+  spawnDamageNumber(x, y, damage, key);
+});
+
+// Game over event - triggered when player dies
+eventBus.on('game:over', ({ deathMessage }) => {
+  gameOverManager.trigger();
+});
+
+// Level complete event - triggered when boss is defeated
+eventBus.on('level:complete', () => {
+  state.levelComplete = true;
+  state.levelCompleteTimer = 0;
+  uiManager.setLevelCompleteVisible(true);
+  statusEl.textContent = 'Level Complete - press Play Again';
+});
+
+// Player mutation event - triggered when player uses mutation ability
+eventBus.on('player:mutate', ({ player }) => {
+  mutateSlime();
+});
+
 // Enemy killed event - handles all death-related effects
 eventBus.on('enemy:killed', ({ enemy, position }) => {
   // Play death sound
@@ -2771,7 +2795,12 @@ eventBus.on('player:damaged', ({ amount, source, sourceX }) => {
   if (state.godMode || player.invulnTimer > 0 || !player.alive) return;
   
   player.health -= amount;
-  spawnDamageNumber(player.x + player.w / 2, player.y, amount, 'player');
+  eventBus.emit('damage:number:spawn', { 
+    x: player.x + player.w / 2, 
+    y: player.y, 
+    damage: amount, 
+    key: 'player' 
+  });
   playHitSound();
   player.invulnTimer = 1;
   
@@ -2789,7 +2818,7 @@ eventBus.on('player:damaged', ({ amount, source, sourceX }) => {
     player.alive = false;
     state.deathMessage = source?.deathMessage || 'Unknown cause';
     recordHighScore(player.farthest);
-    gameOverManager.trigger();
+    eventBus.emit('game:over', { deathMessage: state.deathMessage });
   }
 });
 

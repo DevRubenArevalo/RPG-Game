@@ -1,4 +1,13 @@
+/**
+ * PlayerManager - Manages player state and actions
+ */
 export class PlayerManager {
+  /**
+   * @param {Object} config - Player manager configuration
+   * @param {Player} config.player - Player instance
+   * @param {Object} config.world - World physics
+   * @param {Set} config.keys - Active keys set
+   */
   constructor({ player, world, keys }) {
     this.player = player;
     this.world = world;

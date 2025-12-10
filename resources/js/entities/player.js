@@ -1,8 +1,18 @@
-import { PLAYER_CONFIG } from './config/index.js';
+import { PLAYER_CONFIG } from '../config/index.js';
+import { eventBus } from '../core/EventBus.js';
 
 export { PLAYER_CONFIG };
 
+/**
+ * Player - Main player character class
+ * Manages player state, physics, and abilities
+ */
 export class Player {
+  /**
+   * @param {PlayerConfig} config - Player configuration
+   * @param {Object} world - World physics configuration
+   * @param {number} shopInterval - Distance between shops
+   */
   constructor(config = PLAYER_CONFIG, world, shopInterval) {
     this.config = config;
     this.baseW = config.baseWidth;
@@ -84,7 +94,7 @@ export function updatePlayerMovement(player, dt, input, world, {
   player.duckInputPrev = duck;
   if (duck && swallow) {
     if (!player.swallowHeld && mutateSlime) {
-      mutateSlime();
+      eventBus.emit('player:mutate', { player });
     }
     player.swallowHeld = true;
   } else {

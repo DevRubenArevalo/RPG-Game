@@ -1,5 +1,6 @@
-import { UPGRADES } from './upgrades.js';
+import { UPGRADES } from '../config/upgrades.js';
 
+/** @type {Array<Object>} Base abilities available to all players */
 const BASE_ABILITIES = [
   {
     id: 'acid_trail',
@@ -40,6 +41,9 @@ const HOME_INFO = {
   },
 };
 
+/**
+ * UIManager - Manages game UI, HUD, and information displays
+ */
 export class UIManager {
   constructor({
     state: gameState,

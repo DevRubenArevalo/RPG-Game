@@ -1,4 +1,19 @@
+/**
+ * InputManager - Handles all keyboard input and controls
+ */
 export class InputManager {
+  /**
+   * @param {Object} config - Input manager configuration
+   * @param {GameState} config.state - Game state
+   * @param {Player} config.player - Player instance
+   * @param {Set} config.keys - Active keys set
+   * @param {Function} config.togglePause - Pause toggle function
+   * @param {Function} config.openShop - Shop open function
+   * @param {Object} config.gameOverManager - Game over manager
+   * @param {Function} config.toggleMovementOverlay - Movement overlay toggle
+   * @param {Function} config.toggleDebugMenu - Debug menu toggle
+   * @param {Function} [config.triggerBossCutscene] - Boss cutscene trigger
+   */
   constructor({
     state: gameState,
     player,

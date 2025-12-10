@@ -1,6 +1,20 @@
-import { randomRange } from './utils.js';
+import { randomRange } from '../utils/utils.js';
 
+/**
+ * WorldController - Manages world generation, enemies, platforms, and environmental systems
+ */
 export class WorldController {
+  /**
+   * @param {Object} config - World controller configuration
+   * @param {GameState} config.state - Game state
+   * @param {Player} config.player - Player instance
+   * @param {Object} config.enemyConfig - Enemy configuration
+   * @param {Function} config.createEnemy - Enemy factory function
+   * @param {number} config.platformUnit - Platform size unit
+   * @param {number} config.acidTickInterval - Acid damage interval
+   * @param {number} config.playerDamagePerTick - Damage per acid tick
+   * @param {Function} config.playCorrosionSound - Corrosion sound function
+   */
   constructor({
     state,
     player,

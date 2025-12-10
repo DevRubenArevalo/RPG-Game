@@ -1,6 +1,26 @@
-import { snapshot } from './utils.js';
+import { snapshot } from '../utils/utils.js';
 
+/**
+ * GameOverManager - Handles game over state, high scores, and restart logic
+ */
 export class GameOverManager {
+  /**
+   * @param {Object} config - Game over manager configuration
+   * @param {GameState} config.state - Game state
+   * @param {Player} config.player - Player instance
+   * @param {AudioManager} config.audio - Audio manager
+   * @param {UIManager} config.uiManager - UI manager
+   * @param {ShopManager} config.shopManager - Shop manager
+   * @param {Set} config.keys - Active keys set
+   * @param {HTMLElement} config.statusEl - Status element
+   * @param {Function} config.resetGame - Game reset function
+   * @param {Function} config.restartLoop - Loop restart function
+   * @param {HTMLElement} config.yesButton - Yes button element
+   * @param {HTMLElement} config.noButton - No button element
+   * @param {Function} config.playGameOverSound - Play game over sound
+   * @param {Function} config.stopGameOverSound - Stop game over sound
+   * @param {Function} config.stopAllSoundsExceptGameOver - Stop all other sounds
+   */
   constructor({
     state: gameState,
     player,

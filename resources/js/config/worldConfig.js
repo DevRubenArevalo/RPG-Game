@@ -3,6 +3,18 @@
  * All constants related to game world, physics, and level generation
  */
 
+/**
+ * @typedef {Object} WorldConfig
+ * @property {number} gravity - Gravity acceleration (pixels/second²)
+ * @property {number} frictionGround - Ground friction deceleration
+ * @property {number} frictionAir - Air friction deceleration
+ * @property {number} groundOffset - Distance from bottom of canvas to ground
+ * @property {number} widthMultiplier - Initial world width relative to canvas
+ * @property {number} platformGravity - Gravity multiplier for objects on platforms
+ * @property {number} trapFallSpeed - Falling trap velocity
+ */
+
+/** @type {WorldConfig} */
 export const WORLD_CONFIG = {
   // Physics
   gravity: 1800,              // Gravity acceleration (pixels/second²)
@@ -18,11 +30,30 @@ export const WORLD_CONFIG = {
   trapFallSpeed: 480,         // Falling trap velocity
 };
 
+/**
+ * @typedef {Object} CanvasConfig
+ * @property {number} width - Canvas width in pixels
+ * @property {number} height - Canvas height in pixels
+ */
+
+/** @type {CanvasConfig} */
 export const CANVAS_CONFIG = {
   width: 1280,                // Canvas width
   height: 640,                // Canvas height
 };
 
+/**
+ * @typedef {Object} GenerationConfig
+ * @property {number} chunkWidth - Width of each generation chunk
+ * @property {number} safeZoneEnd - Distance before enemies/traps spawn
+ * @property {number} generationMarginMultiplier - Generate when player within this ratio of canvas
+ * @property {number} cleanupBufferMultiplier - Cleanup entities outside this ratio of canvas
+ * @property {number} platformUnit - Base platform size unit
+ * @property {number} platformSeamEpsilon - Tolerance for platform alignment
+ * @property {number} markerSpacing - Distance between distance markers
+ */
+
+/** @type {GenerationConfig} */
 export const GENERATION_CONFIG = {
   // Chunk generation
   chunkWidth: 760,            // Width of each generation chunk
@@ -38,12 +69,28 @@ export const GENERATION_CONFIG = {
   markerSpacing: 100,         // Distance between distance markers
 };
 
-// View/camera settings
+/**
+ * @typedef {Object} CameraConfig
+ * @property {number} viewRightMargin - Player position relative to right edge
+ */
+
+/** @type {CameraConfig} */
 export const CAMERA_CONFIG = {
   viewRightMargin: 400,       // Player position relative to right edge
 };
 
-// Cutscene room configuration
+/**
+ * @typedef {Object} CutsceneRoomBounds
+ * @property {number} minX - Minimum X boundary
+ * @property {number} maxX - Maximum X boundary
+ */
+
+/**
+ * @typedef {Object} CutsceneConfig
+ * @property {CutsceneRoomBounds} roomBounds - Tutorial/cutscene room boundaries
+ */
+
+/** @type {CutsceneConfig} */
 export const CUTSCENE_CONFIG = {
   roomBounds: {
     minX: 0,

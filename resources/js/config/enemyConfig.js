@@ -3,6 +3,31 @@
  * All constants related to enemy behavior, stats, and appearance
  */
 
+/**
+ * @typedef {Object} EnemyProjectileConfig
+ * @property {number} interval - Seconds between projectile spawns
+ * @property {number} modeSwitch - Seconds between vertical/horizontal mode switch
+ * @property {number} speed - Projectile velocity
+ */
+
+/**
+ * @typedef {Object} EnemyTier
+ * @property {string} tier - Tier name ('weak', 'medium', 'hard')
+ * @property {number} health - Enemy health points
+ * @property {number} damage - Damage dealt to player
+ * @property {string} color - Hex color code
+ * @property {string} deathMessage - Message displayed when player dies
+ */
+
+/**
+ * @typedef {Object} EnemyConfig
+ * @property {number} width - Enemy width in pixels
+ * @property {number} height - Enemy height in pixels
+ * @property {EnemyProjectileConfig} projectile - Projectile behavior configuration
+ * @property {EnemyTier[]} tiers - Array of enemy tier configurations
+ */
+
+/** @type {EnemyConfig} */
 export const ENEMY_CONFIG = {
   // Base enemy dimensions
   width: 44,
@@ -41,6 +66,29 @@ export const ENEMY_CONFIG = {
   ],
 };
 
+/**
+ * @typedef {Object} BossConfig
+ * @property {number} sizeRatio - Ratio of canvas height
+ * @property {string} color - Base boss color (hex)
+ * @property {number} eyeOffsetRatio - Eye position offset ratio
+ * @property {number} health - Total boss health points
+ * @property {number} contactDamage - Damage on player collision
+ * @property {number} regenRate - HP regeneration per second
+ * @property {number} shieldDuration - Invulnerability duration in seconds
+ * @property {number} windup - Wind-up time before jump (seconds)
+ * @property {number} jumpDuration - Time in air during jump
+ * @property {number} recoverDuration - Recovery time after landing
+ * @property {number} jumpDistanceRatio - Jump distance as ratio of screen width
+ * @property {Object} shockwave - Shockwave attack configuration
+ * @property {number} shockwave.count - Number of shockwaves per attack
+ * @property {number} shockwave.interval - Time between shockwaves
+ * @property {number[]} shockwave.heights - Height percentages for each wave
+ * @property {number} shockwave.warningDuration - Warning display time
+ * @property {number} shockwave.activeDuration - Active damage time
+ * @property {number} shockwave.damage - Damage dealt by shockwave
+ */
+
+/** @type {BossConfig} */
 export const BOSS_CONFIG = {
   // Size and appearance
   sizeRatio: 0.6,              // Ratio of canvas height

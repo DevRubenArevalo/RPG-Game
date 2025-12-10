@@ -3,6 +3,78 @@
  * All constants related to UI rendering, animations, and visual effects
  */
 
+/**
+ * @typedef {Object} DamageNumbersConfig
+ * @property {number} floatSpeed - Upward float speed
+ * @property {number} lifetime - Display duration (seconds)
+ * @property {number} limitPerSecond - Max damage numbers per second per entity
+ */
+
+/**
+ * @typedef {Object} BossHealthConfig
+ * @property {number} barCount - Number of health bars
+ * @property {number} barWidth - Width of each bar
+ * @property {number} barHeight - Height of each bar
+ * @property {number} barSpacing - Space between bars
+ * @property {number} yOffset - Distance from top of screen
+ */
+
+/**
+ * @typedef {Object} ShieldIconConfig
+ * @property {number} size - Icon dimensions (square)
+ * @property {number} xOffset - Distance from right of health bars
+ * @property {string} cooldownColor - Color during cooldown
+ * @property {number} glowCycle - Glow animation cycle duration
+ */
+
+/**
+ * @typedef {Object} MetallicSheenConfig
+ * @property {number} lineWidth - Width of each sheen line
+ * @property {number} lineSpacing - Space between lines
+ * @property {number} opacity1 - First line opacity
+ * @property {number} opacity2 - Second line opacity
+ * @property {number} sweepDuration - Animation duration
+ * @property {number} sweepInterval - Time between sweeps
+ */
+
+/**
+ * @typedef {Object} ScreenEffectsConfig
+ * @property {number} whiteFlashDuration - White flash duration
+ * @property {number} whiteFlashFadeStart - When fade starts
+ * @property {number} hitFlashDuration - Hit flash duration
+ */
+
+/**
+ * @typedef {Object} AbilityListConfig
+ * @property {number} maxVisible - Max abilities shown at once
+ */
+
+/**
+ * @typedef {Object} FlingCooldownConfig
+ * @property {number} barHeight - Cooldown bar height
+ * @property {number} yOffset - Distance below player
+ */
+
+/**
+ * @typedef {Object} GameOverTearsConfig
+ * @property {number} spawnRate - Seconds between tears
+ * @property {number} fallSpeed - Tear fall velocity
+ * @property {number} size - Tear radius
+ */
+
+/**
+ * @typedef {Object} UIConfig
+ * @property {DamageNumbersConfig} damageNumbers - Damage number display settings
+ * @property {BossHealthConfig} bossHealth - Boss health bar settings
+ * @property {ShieldIconConfig} shieldIcon - Boss shield icon settings
+ * @property {MetallicSheenConfig} metallicSheen - Metallic animation settings
+ * @property {ScreenEffectsConfig} effects - Screen effect settings
+ * @property {AbilityListConfig} abilityList - Ability list settings
+ * @property {FlingCooldownConfig} flingCooldown - Fling cooldown indicator settings
+ * @property {GameOverTearsConfig} gameOverTears - Game over tear settings
+ */
+
+/** @type {UIConfig} */
 export const UI_CONFIG = {
   // Damage numbers
   damageNumbers: {
@@ -64,6 +136,39 @@ export const UI_CONFIG = {
   },
 };
 
+/**
+ * @typedef {Object} PlayerAnimationConfig
+ * @property {number} squishRecovery - Squish recovery speed (per second)
+ * @property {number} duckTransitionSpeed - Duck animation speed
+ * @property {number} wallModeRotation - Wall mode rotation angle (radians)
+ */
+
+/**
+ * @typedef {Object} ChunkAnimationConfig
+ * @property {number} gravity - Gravity multiplier for chunks
+ * @property {number} bounceDecay - Velocity retained after bounce
+ * @property {number} magnetPull - Magnet force
+ * @property {number} minMagnetSpeed - Minimum speed when magnetized
+ * @property {number} magnetActiveDistance - Distance ratio to activate strong pull
+ */
+
+/**
+ * @typedef {Object} CoinAnimationConfig
+ * @property {number} gravity - Gravity multiplier
+ * @property {number} bounceDecay - Velocity retained after bounce
+ * @property {number} magnetPull - Magnet force
+ * @property {number} minMagnetSpeed - Minimum speed when magnetized
+ * @property {number} magnetActiveDistance - Distance ratio to activate strong pull
+ */
+
+/**
+ * @typedef {Object} AnimationConfig
+ * @property {PlayerAnimationConfig} player - Player animation settings
+ * @property {ChunkAnimationConfig} chunks - Chunk animation settings
+ * @property {CoinAnimationConfig} coins - Coin animation settings
+ */
+
+/** @type {AnimationConfig} */
 export const ANIMATION_CONFIG = {
   // Player animations
   player: {
